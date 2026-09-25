@@ -1,0 +1,23 @@
+# Data
+data/
+!data/.gitkeep
+
+# Models
+models/
+!models/.gitkeep
+
+# Logs
+logs/
+!logs/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
