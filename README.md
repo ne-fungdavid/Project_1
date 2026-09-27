@@ -66,7 +66,7 @@ Two datasets live under `data/`:
 
 1. **`data/selected_images/`** — the raw celebrity subset above, one folder per identity ID. This is the source material for the Milestone 1 classifier and the Milestone 2 compositing step.
 2. **`data/synthetic_multi_face/`** — the YOLO detection dataset used to train and evaluate the detector (Milestones 2 & 3):
-   - Composite **640×640** images, each containing **2–5 celebrity faces** pasted onto a random solid-colour background.
+   - Composite **640×640** images, each containing **2–5 celebrity faces** pasted onto a random colour background.
    - A YOLO-format label file (`class cx cy w h`, normalised) alongside every image.
    - **70 / 15 / 15** split into `images/train`, `images/val`, `images/test` (**140 / 30 / 30** images), with matching `labels/` folders.
    - `data.yaml` declares **5 classes** (`nc: 5`) keyed by identity ID (`7, 797, 2619, 4428, 7007`).
@@ -88,7 +88,7 @@ A CUDA-capable GPU was used, the code also runs on CPU.
 ### 1. Clone & install
 
 ```bash
-git clone <repo-url> Project_1
+git clone https://github.com/ne-fungdavid/Project_1.git
 cd Project_1
 pip install ultralytics==8.4.163      # pulls in a compatible torch
 ```
@@ -101,56 +101,18 @@ Run top-to-bottom:
 
 ### 3. Build the synthetic multi-face dataset — Milestone 2
 
-Run `Milestone_2/DavidFung_Project1.Milestone2.ipynb` top-to-bottom. It composites 2–5 faces per image at 640×640, writes a YOLO `labels/*.txt` per image, splits into `train` / `val` / `test` (70 / 15 / 15), and emits `data/synthetic_multi_face/data.yaml`.
+To be updated.
 
 ### 4. Fine-tune & evaluate — Milestone 3
 
-Run `Milestone_3/DavidFung_Project1.Milestone3.ipynb` top-to-bottom. Key configuration (from the "PROJECT CONSTANTS" cell):
-
-| Parameter | Value |
-|-----------|-------|
-| Pretrained weights | `yolov8n.pt` |
-| Dataset | `data/synthetic_multi_face/data.yaml` |
-| Image size (`imgsz`) | `640` |
-| Batch size | `16` |
-| Epochs | `50` (use `10`–`20` for a quick smoke test) |
-| Optimiser | `auto` (resolves to AdamW, `lr ≈ 0.0011`) |
-| Global seed (NumPy/PyTorch/TF) | `42` |
-| Run name | `celebrity_detection / yolov8n_finetune` |
-
-The core training call:
-
-```python
-results = model.train(
-    data="data/synthetic_multi_face/data.yaml",
-    epochs=50,
-    batch=16,
-    imgsz=640,
-    project="celebrity_detection",
-    name="yolov8n_finetune",
-    exist_ok=True,
-)
-```
-
-Evaluation on the held-out test split:
-
-```python
-test_results = model.val(data="data/synthetic_multi_face/data.yaml",
-                         split="test", imgsz=640)
-```
+To be updated.
 
 ### 5. Outputs
 
-Ultralytics writes all run artefacts to `runs/detect/celebrity_detection/yolov8n_finetune/`, including:
-
-- `weights/best.pt` and `weights/last.pt` — best / final weights.
-- `args.yaml` — the exact hyperparameter set used (the reproducibility record).
-- `results.png`, `labels.jpg`, `confusion_matrix.png`, `results.csv` — training diagnostics.
-
-The headline metrics reported on the test set are **mAP@0.5, mAP@0.5:0.95, Precision and Recall**.
+To be updated.
 
 ## Notes
 
 - `yolov8n.pt` is downloaded automatically on the first run if it is not already present.
-- Set `EPOCHS` to a small value (10–20) to sanity-check the pipeline before a full 50-epoch run.
+- Set `EPOCHS` to a small value (8-10) to sanity-check the pipeline before a full 30 to 50-epoch run.
 - `data/` is committed in full (except the regenerable `temp/` intermediates) so the pipeline reproduces without re-downloading the source CelebA images.
