@@ -81,7 +81,7 @@ Two datasets live under `data/`:
 | Ultralytics (YOLOv8) | 8.4.163 |
 | TensorFlow | 2.13.1 |
 
-A CUDA-capable GPU was used (NVIDIA RTX 5070 Ti); the code also runs on CPU.
+A CUDA-capable GPU was used, the code also runs on CPU.
 
 ## How to Reproduce the Training Runs
 
