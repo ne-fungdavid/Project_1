@@ -1,0 +1,12 @@
+path: data/synthetic_multi_face
+train: images/train
+val: images/val
+test: images/test
+
+nc: 5
+names:
+  0: 7
+  1: 797
+  2: 2619
+  3: 4428
+  4: 7007
