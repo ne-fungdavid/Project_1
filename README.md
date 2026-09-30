@@ -101,7 +101,29 @@ Run top-to-bottom:
 
 ### 3. Build the synthetic multi-face dataset — Milestone 2
 
-To be updated.
+Run `Milestone_2/DavidFung_Project1.Milestone2.ipynb` top-to-bottom. It regenerates 200 composite 640×640 images (2–5 distinct faces per frame) with YOLO-format labels, then splits them into train/val/test and writes `data.yaml`.
+
+**Split** — 70 / 15 / 15 (train / val / test) → **140 / 30 / 30** images. Split is seeded (`GLOBAL_SEED = 42`) so it is reproducible, and every identity appears in every partition (identity-balanced, no leakage).
+
+**Augmentation strategy (Milestone 3 training)**
+
+All augmentations are chosen to be *detection-safe* — they transform the frame in a way that maps bounding boxes deterministically, so labels remain correct:
+
+| Augmentation | Parameter | Rationale |
+|:------------:|:---------:|-----------|
+| Horizontal flip | `hflip=0.5` | Boxes mirror symmetrically |
+| Mosaic | `mosaic=1.0` | 4-image composite with box rescaling — matches the multi-face task |
+| HSV jitter | `h=0.015, s=0.7, v=0.4` | Mild colour/lighting shift; boxes unaffected |
+| Rotation | `±5°` | Small pose variation; boxes rotate with the frame |
+| Scale | `0.5` | Zoom in/out; boxes rescale proportionally |
+| Mixup | `mixup=0.1` | Low-rate blend avoids blurring box edges |
+| Copy-paste | `copypaste=0.1` | Injects extra faces *with* their boxes, raising recall on small faces |
+
+Large rotations or aggressive geometric warps are deliberately avoided because they stretch tight face boxes into shapes inconsistent with the YOLO rectangle format.
+
+**Compositing-time variation (baked in at generation)**
+
+Each face crop is augmented *before* being pasted onto the background: random horizontal flip (50 %), scale to 13–35 % of canvas height, brightness jitter (0.85–1.15), and rotation (±10°). This gives the synthetic set the same visual diversity that the runtime augmentations would produce, without needing a separate augmentation pass at inference time.
 
 ### 4. Fine-tune & evaluate — Milestone 3
 
