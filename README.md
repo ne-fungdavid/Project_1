@@ -2,14 +2,14 @@
 
 **Group:** David Fung (NUID: 003105587)
 
-A discriminative computer-vision pipeline for **celebrity identification and detection**. Across three graded milestones the project (1) curates a small, diverse set of celebrity identities, (2) builds a synthetic **multi-face** detection dataset, and (3) fine-tunes and evaluates a YOLOv8 detector on it. The dataset and the notebook for every step are committed to this repository, so the pipeline is reproducible end-to-end from a fresh clone.
+A discriminative computer-vision pipeline for **celebrity identification and detection**. Across three graded milestones the project (1) curates a small, diverse set of celebrity identities, (2) builds a synthetic **grid-based multi-face** detection dataset (9 distinct faces per frame), and (3) fine-tunes and evaluates a YOLOv8 detector on it. The dataset and the notebook for every step are committed to this repository, so the pipeline is reproducible end-to-end from a fresh clone.
 
 ## Project Overview
 
 | Milestone | Folder | Goal |
 |:---------:|--------|------|
 | **1** | `Milestone_1/` | Select a diverse subset of celebrity identities from CelebA and build a single-face classification baseline. |
-| **2** | `Milestone_2/` | Construct a synthetic multi-face detection dataset (2–5 composite faces per image) with YOLO-format annotations and a train/val/test split. |
+| **2** | `Milestone_2/` | Construct a synthetic 3×3 grid detection dataset (9 distinct celebrity faces per image) with YOLO-format annotations and a train/val/test split. |
 | **3** | `Milestone_3/` | Fine-tune YOLOv8 on the synthetic dataset, visualise training, and evaluate on the held-out test split. |
 
 The identity-selection rationale is also captured in `DavidFung_Project1_Selection.ipynb` and `Milestone_1/project_1_proposal.pdf`.
@@ -26,19 +26,19 @@ The identity-selection rationale is also captured in `DavidFung_Project1_Selecti
 │   ├── project_1_proposal.pdf
 │   └── Project_1_Milestone_1_Summary.pdf
 ├── Milestone_2/
-│   └── DavidFung_Project1.Milestone2.ipynb   # Synthetic multi-face dataset construction
+│   └── DavidFung_Project1.Milestone2.ipynb   # Synthetic 3×3 grid dataset construction
 ├── Milestone_3/
 │   └── DavidFung_Project1.Milestone3.ipynb   # YOLOv8 fine-tuning + evaluation
 ├── Milestone_4/                              # (reserved)
 ├── data/
 │   ├── identity_CelebA.txt                   # CelebA identity reference list
-│   ├── selected_images/                      # The celebrity subset (one folder per identity)
-│   │   ├── 7/    797/    2619/    4428/    7007/
-│   └── synthetic_multi_face/                 # Detection dataset (YOLO format)
+│   ├── selected_images/                      # Milestone 1 celebrity subset (5 identities)
+│   ├── class_images/                         # 13 celebrity identities (source for M2 grid)
+│   │   ├── 3/  7/  797/  1212/  2336/  2619/  2970/  4422/  4428/  5695/  7007/  8335/  10002/
+│   └── synthetic_grid/                       # Detection dataset (YOLO format, 3×3 grid)
 │       ├── data.yaml
 │       ├── images/{train,val,test}/
-│       ├── labels/{train,val,test}/
-│       └── temp/{images,labels}/             # intermediate, git-ignored (regenerated in M2)
+│       └── labels/{train,val,test}/
 ├── models/                                   # (reserved for exported models)
 └── weights/
     └── yolo26n.pt
@@ -46,31 +46,26 @@ The identity-selection rationale is also captured in `DavidFung_Project1_Selecti
 
 ## Celebrity Selection and Identities
 
-For the initial phase of the CelebA classification pipeline, a subset of **five distinct identities** was selected. The selection process was governed by three primary criteria: **visual diversity, demographic representation and dataset balance**.
+For Milestone 1, a subset of **five distinct identities** was selected for the single-face classification baseline. For Milestone 2, an expanded pool of **13 identities** is used to populate the 3×3 grid (9 per image, drawn without replacement). The selection criteria are **visual diversity, demographic representation and dataset balance**.
 
-| Class | Identity | Images |
-|:-----:|----------|:------:|
-| 0 | ID 7 — A. R. Rahman | 24 |
-| 1 | ID 797 — Aria Crescendo | 25 |
-| 2 | ID 2619 — Dmitry Medvedev | 25 |
-| 3 | ID 4428 — Jenna Fischer | 23 |
-| 4 | ID 7007 — Monika Brodka | 24 |
+**Milestone 1 (classification):** 5 identities, 121 face crops (stored under `data/selected_images/<ID>/`).
 
-**Total: 121 single-face source images** (stored under `data/selected_images/<ID>/`).
+**Milestone 2 (detection grid):** 13 identities, ≈280 face crops (stored under `data/class_images/<ID>/`). Nine of the 13 are randomly selected per grid image, so every frame shows 9 distinct celebrities.
 
 The chosen identities represent a wide spectrum of facial features so the model learns robust, generalised characteristics rather than specific demographic biases. By including individuals with varying hair colors (ranging from blonde to black), different skin tones and diverse facial structures (encompassing a range of masculine and feminine features), the network is given a high-contrast training environment. This diversity is crucial for the model to learn "face-specific" features — such as eye shape and bone structure — rather than relying on easy-to-memorise features like hair color or skin tone.
 
 ## Dataset
 
-Two datasets live under `data/`:
+Three datasets live under `data/`:
 
-1. **`data/selected_images/`** — the raw celebrity subset above, one folder per identity ID. This is the source material for the Milestone 1 classifier and the Milestone 2 compositing step.
-2. **`data/synthetic_multi_face/`** — the YOLO detection dataset used to train and evaluate the detector (Milestones 2 & 3):
-   - Composite **640×640** images, each containing **2–5 celebrity faces** pasted onto a random colour background.
-   - A YOLO-format label file (`class cx cy w h`, normalised) alongside every image.
-   - **70 / 15 / 15** split into `images/train`, `images/val`, `images/test` (**140 / 30 / 30** images), with matching `labels/` folders.
-   - `data.yaml` declares **5 classes** (`nc: 5`) keyed by identity ID (`7, 797, 2619, 4428, 7007`).
-   - `temp/{images,labels}/` holds the pre-split composites; it is a regenerable intermediate and is excluded from version control.
+1. **`data/selected_images/`** — the Milestone 1 celebrity subset (5 identities, 121 crops).
+2. **`data/class_images/`** — the expanded pool of **13 identities** (≈280 crops) used as source material for the Milestone 2 grid compositing.
+3. **`data/synthetic_grid/`** — the YOLO detection dataset used to train and evaluate the detector (Milestones 2 & 3):
+   - **640×640** grid images, each a **3×3 layout of 9 distinct celebrity faces** on a varied background.
+   - A YOLO-format label file (`class cx cy w h`, normalised) alongside every image — one box per face.
+   - **70 / 15 / 15** split into `images/train`, `images/val`, `images/test` (**14 / 3 / 3** images), with matching `labels/` folders.
+   - `data.yaml` declares **13 classes** (`nc: 13`) keyed by identity ID.
+   - No source image file is ever reused across the dataset (global `used_paths` tracking).
 
 ## Environment
 
@@ -99,11 +94,19 @@ Run top-to-bottom:
 - `DavidFung_Project1_Selection.ipynb` — reproduces the identity selection.
 - `Milestone_1/DavidFung_Project1.Milestone1.ipynb` — single-face classification baseline.
 
-### 3. Build the synthetic multi-face dataset — Milestone 2
+### 3. Build the synthetic grid dataset — Milestone 2
 
-Run `Milestone_2/DavidFung_Project1.Milestone2.ipynb` top-to-bottom. It regenerates 200 composite 640×640 images (2–5 distinct faces per frame) with YOLO-format labels, then splits them into train/val/test and writes `data.yaml`.
+Run `Milestone_2/DavidFung_Project1.Milestone2.ipynb` top-to-bottom. It generates 20 composite 640×640 grid images (each a 3×3 layout of 9 distinct celebrity faces) with YOLO-format labels, then splits them into train/val/test and writes `data.yaml`.
 
-**Split** — 70 / 15 / 15 (train / val / test) → **140 / 30 / 30** images. Split is seeded (`GLOBAL_SEED = 42`) so it is reproducible, and every identity appears in every partition (identity-balanced, no leakage).
+**Grid construction:**
+- 9 of the 13 available identities are selected per image (without replacement).
+- One random face crop is drawn from each identity's pool; a global `used_paths` set ensures no image file is ever reused across the dataset.
+- Per-face augmentation: 50 % horizontal flip, brightness jitter (0.85–1.15), scale to 80–95 % of cell size.
+- Each face is placed in its grid cell with a ±5 % random offset to break the perfectly-regular pattern.
+- Background varies per image: gradient (50 %), blurred noise (30 %), or blurred face (20 %).
+- The identity-to-cell assignment is shuffled per image, so the same 9 celebrities appear in different positions across the dataset.
+
+**Split** — 70 / 15 / 15 (train / val / test) → **14 / 3 / 3** images. Seeded (`GLOBAL_SEED = 42`), reproducible, identity-balanced.
 
 **Augmentation strategy (Milestone 3 training)**
 
@@ -123,7 +126,7 @@ Large rotations or aggressive geometric warps are deliberately avoided because t
 
 **Compositing-time variation (baked in at generation)**
 
-Each face crop is augmented *before* being pasted onto the background: random horizontal flip (50 %), scale to 13–35 % of canvas height, brightness jitter (0.85–1.15), and rotation (±10°). This gives the synthetic set the same visual diversity that the runtime augmentations would produce, without needing a separate augmentation pass at inference time.
+Each face crop is augmented *before* being pasted into its grid cell: random horizontal flip (50 %), brightness jitter (0.85–1.15), and scale to 80–95 % of cell dimensions. This bakes in visual diversity directly, so the synthetic set already covers a range of orientations and lighting conditions without needing a separate augmentation pass at inference time.
 
 ### 4. Fine-tune & evaluate — Milestone 3
 
@@ -137,4 +140,4 @@ To be updated.
 
 - `yolov8n.pt` is downloaded automatically on the first run if it is not already present.
 - Set `EPOCHS` to a small value (8-10) to sanity-check the pipeline before a full 30 to 50-epoch run.
-- `data/` is committed in full (except the regenerable `temp/` intermediates) so the pipeline reproduces without re-downloading the source CelebA images.
+- `data/` is committed in full so the pipeline reproduces without re-downloading the source CelebA images.
