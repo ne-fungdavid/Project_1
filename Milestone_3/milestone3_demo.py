@@ -48,8 +48,8 @@ def main():
     parser = argparse.ArgumentParser(description="Celebrity Detection Demo (Milestone 3)")
     parser.add_argument("--image", type=str, default=None,
                         help="Path to a single image to run detection on")
-    parser.add_argument("--conf", type=float, default=0.25,
-                        help="Confidence threshold (default 0.25)")
+    parser.add_argument("--conf", type=float, default=0.1,
+                        help="Confidence threshold (default 0.1)")
     parser.add_argument("--imgsz", type=int, default=640,
                         help="Inference image size (default 640)")
     parser.add_argument("--save", action="store_true",
@@ -95,13 +95,15 @@ def main():
     for img_path in images:
         results = model.predict(img_path, conf=conf, imgsz=args.imgsz, verbose=False)
         detections = []
-        for b in results[0].boxes:
-            cls_idx = int(b.cls[0])
+        dets = results[0].boxes
+        for i in range(len(dets)):
+            cls_idx = int(dets.cls[i].item())
             detections.append({
                 "class_id": names.get(cls_idx, str(cls_idx)),
-                "confidence": b.conf[0].item(),
+                "class_idx": cls_idx,
+                "confidence": float(dets.conf[i].item()),
                 "is_target": cls_idx in target_indices,
-                "bbox": [float(x) for x in b.xyxy[0].tolist()],
+                "bbox": [float(x) for x in dets.xyxy[i].tolist()],
             })
         if not detections and conf > 0.001:
             low = 0.001
@@ -219,28 +221,122 @@ def main():
         print(f"TOTAL: {totals['det']} detections (no ground truth available)")
     print(f"{'=' * 60}\n")
 
+    # --- Visualize or save (4-color: Green=TP, Orange=Mis, Red=FP, Blue=FN) ---
+    import cv2
+
+    def compute_iou(box_a, box_b):
+        x1 = max(box_a[0], box_b[0]); y1 = max(box_a[1], box_b[1])
+        x2 = min(box_a[2], box_b[2]); y2 = min(box_a[3], box_b[3])
+        inter = max(0, x2 - x1) * max(0, y2 - y1)
+        area_a = (box_a[2] - box_a[0]) * (box_a[3] - box_a[1])
+        area_b = (box_b[2] - box_b[0]) * (box_b[3] - box_b[1])
+        return inter / (area_a + area_b - inter) if (area_a + area_b - inter) > 0 else 0.0
+
+    def get_gt_pixel(img_path):
+        base = os.path.splitext(os.path.basename(img_path))[0]
+        for split in ("test", "val", "train"):
+            lbl = os.path.join(PROJECT_ROOT, "data", "synthetic_grid", "labels", split, base + ".txt")
+            if os.path.exists(lbl):
+                img = cv2.imread(img_path)
+                if img is None:
+                    return []
+                ih, iw = img.shape[:2]
+                boxes = []
+                with open(lbl) as f:
+                    for line in f:
+                        p = line.strip().split()
+                        if len(p) >= 5:
+                            ci = int(p[0])
+                            cx, cy, bw, bh = map(float, p[1:5])
+                            boxes.append({"class": ci, "bbox": [
+                                int((cx - bw/2) * iw), int((cy - bh/2) * ih),
+                                int((cx + bw/2) * iw), int((cy + bh/2) * ih)]})
+                return boxes
+        return []
+
+    def annotate_4color(img, gt_boxes, dets, class_names):
+        annotated = img.copy()
+        det_list = []
+        for i in range(len(dets)):
+            x1, y1, x2, y2 = map(int, dets.xyxy[i].tolist())
+            ci = int(dets.cls[i].item())
+            conf = float(dets.conf[i].item())
+            det_list.append({"bbox": [x1, y1, x2, y2], "class": ci, "conf": conf})
+        has_gt = len(gt_boxes) > 0
+        gt_matched = [False] * len(gt_boxes)
+        label_offset = 0
+        for det in det_list:
+            if has_gt:
+                best_iou, best_gt_idx = 0.0, -1
+                for j, gt in enumerate(gt_boxes):
+                    v = compute_iou(det["bbox"], gt["bbox"])
+                    if v > best_iou:
+                        best_iou, best_gt_idx = v, j
+                if best_iou >= 0.5 and best_gt_idx >= 0:
+                    if det["class"] == gt_boxes[best_gt_idx]["class"]:
+                        color = (0, 200, 0)       # Green = TP
+                    else:
+                        color = (0, 128, 255)     # Orange = Misclassified
+                    gt_matched[best_gt_idx] = True
+                else:
+                    color = (0, 0, 255)           # Red = FP
+            else:
+                color = (0, 255, 255)             # Yellow = no GT, neutral
+            x1, y1, x2, y2 = det["bbox"]
+            label = f"{class_names.get(det['class'], str(det['class']))} ({det['conf']:.2f})"
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
+            # Offset label to avoid overlapping labels on stacked boxes
+            ly = max(y1 - th - 6 - label_offset, 0)
+            cv2.rectangle(annotated, (x1, ly), (x1 + tw, ly + th + 4), color, -1)
+            cv2.putText(annotated, label, (x1, ly + th),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 0) if not has_gt else (255, 255, 255), 1)
+            label_offset += th + 6
+        for j, gt in enumerate(gt_boxes):
+            if not gt_matched[j]:
+                x1, y1, x2, y2 = gt["bbox"]
+                color = (255, 128, 0)         # Blue = FN
+                cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2, cv2.LINE_AA)
+                cv2.rectangle(annotated, (x1 + 3, y1 + 3), (x2 - 3, y2 - 3), color, 1, cv2.LINE_AA)
+                label = f"GT:{class_names.get(gt['class'], str(gt['class']))} (missed)"
+                cv2.putText(annotated, label, (x1, max(y1 - 4, 12)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA)
+        return annotated
+
     if args.save:
         out_dir = os.path.join(SCRIPT_DIR, "demo_output")
         os.makedirs(out_dir, exist_ok=True)
-        import cv2
         for img_path, results, _d, _c in all_results:
-            annotated = results[0].plot()
+            img = cv2.imread(img_path)
+            gt_boxes = get_gt_pixel(img_path)
+            annotated = annotate_4color(img, gt_boxes, results[0].boxes, names)
             out_path = os.path.join(out_dir, os.path.basename(img_path))
             cv2.imwrite(out_path, annotated)
             print(f"Saved: {out_path}")
     else:
         try:
             import matplotlib.pyplot as plt
-            import cv2
             n = len(all_results)
-            fig, axes = plt.subplots(1, n, figsize=(7 * n, 7))
-            if n == 1:
+            n_cols = min(4, n)
+            n_rows = (n + n_cols - 1) // n_cols
+            fig, axes = plt.subplots(n_rows, n_cols, figsize=(7 * n_cols, 8 * n_rows))
+            fig.suptitle("Green=TP  Orange=Misclassified  Red=FP  Blue=FN  |  Yellow=no GT (manual check)", fontsize=11)
+            if n_rows == 1 and n_cols == 1:
+                axes = [[axes]]
+            elif n_rows == 1:
                 axes = [axes]
             for idx, (img_path, results, _d, _c) in enumerate(all_results):
-                annotated = cv2.cvtColor(results[0].plot(), cv2.COLOR_BGR2RGB)
-                axes[idx].imshow(annotated)
-                axes[idx].set_title(os.path.basename(img_path), fontsize=10)
-                axes[idx].axis("off")
+                row, col = idx // n_cols, idx % n_cols
+                ax = axes[row][col]
+                img = cv2.imread(img_path)
+                gt_boxes = get_gt_pixel(img_path)
+                annotated = annotate_4color(img, gt_boxes, results[0].boxes, names)
+                ax.imshow(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB))
+                ax.set_title(os.path.basename(img_path), fontsize=9)
+                ax.axis("off")
+            for idx in range(n, n_rows * n_cols):
+                row, col = idx // n_cols, idx % n_cols
+                axes[row][col].set_visible(False)
             plt.tight_layout()
             plt.show()
         except ImportError:
