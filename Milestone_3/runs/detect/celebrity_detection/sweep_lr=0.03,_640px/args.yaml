@@ -2,7 +2,7 @@ task: detect
 mode: train
 model: yolov8n.pt
 data: h:\Education\Northeastern\MS_DAE\IE7615\Project_1\data\synthetic_grid\data.yaml
-epochs: 10
+epochs: 20
 time: null
 patience: 100
 batch: 16

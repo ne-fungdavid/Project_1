@@ -1,7 +1,11 @@
 #!/usr/bin/env python
 """
 Generate the detection visualization gallery for Milestone 3.
-Creates annotated images (model predictions + ground truth) in gallery/.
+Creates annotated images with 4-color error coding in gallery/:
+  Green  = TP (correct class, IoU >= 0.5)
+  Orange = Misclassified (IoU >= 0.5, wrong class)
+  Red    = FP (IoU < 0.5, no matching GT)
+  Blue   = FN (missed GT box)
 
 Run from anywhere:
     python generate_gallery.py
@@ -27,6 +31,96 @@ def find_weights():
     return None
 
 
+def compute_iou(box_a, box_b):
+    x1 = max(box_a[0], box_b[0])
+    y1 = max(box_a[1], box_b[1])
+    x2 = min(box_a[2], box_b[2])
+    y2 = min(box_a[3], box_b[3])
+    inter = max(0, x2 - x1) * max(0, y2 - y1)
+    area_a = (box_a[2] - box_a[0]) * (box_a[3] - box_a[1])
+    area_b = (box_b[2] - box_b[0]) * (box_b[3] - box_b[1])
+    union = area_a + area_b - inter
+    return inter / union if union > 0 else 0.0
+
+
+def load_gt_boxes(lbl_path, img_w, img_h):
+    boxes = []
+    if not os.path.exists(lbl_path):
+        return boxes
+    with open(lbl_path) as f:
+        for line in f:
+            parts = line.strip().split()
+            if len(parts) < 5:
+                continue
+            ci = int(parts[0])
+            cx, cy, bw, bh = map(float, parts[1:5])
+            x1 = int((cx - bw / 2) * img_w)
+            y1 = int((cy - bh / 2) * img_h)
+            x2 = int((cx + bw / 2) * img_w)
+            y2 = int((cy + bh / 2) * img_h)
+            boxes.append({"class": ci, "bbox": [x1, y1, x2, y2]})
+    return boxes
+
+
+def annotate_with_errors(img, gt_boxes, dets, class_names):
+    """Annotate image with 4-color coding. Returns (annotated_img, counts_dict)."""
+    annotated = img.copy()
+    n_tp = n_fp = n_fn = n_mis = 0
+
+    # Build detection list using indexed access
+    det_list = []
+    for i in range(len(dets)):
+        x1, y1, x2, y2 = map(int, dets.xyxy[i].tolist())
+        ci = int(dets.cls[i].item())
+        conf = float(dets.conf[i].item())
+        det_list.append({"bbox": [x1, y1, x2, y2], "class": ci, "conf": conf})
+
+    gt_matched = [False] * len(gt_boxes)
+
+    for det in det_list:
+        best_iou, best_gt_idx = 0.0, -1
+        for j, gt in enumerate(gt_boxes):
+            iou = compute_iou(det["bbox"], gt["bbox"])
+            if iou > best_iou:
+                best_iou = iou
+                best_gt_idx = j
+
+        if best_iou >= 0.5 and best_gt_idx >= 0:
+            gt = gt_boxes[best_gt_idx]
+            if det["class"] == gt["class"]:
+                color = (0, 200, 0)      # Green = TP
+                n_tp += 1
+            else:
+                color = (0, 128, 255)    # Orange = Misclassified
+                n_mis += 1
+            gt_matched[best_gt_idx] = True
+        else:
+            color = (0, 0, 255)          # Red = FP
+            n_fp += 1
+
+        x1, y1, x2, y2 = det["bbox"]
+        label = f"{class_names.get(det['class'], str(det['class']))} ({det['conf']:.2f})"
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
+        cv2.rectangle(annotated, (x1, max(y1 - th - 6, 0)), (x1 + tw, y1), color, -1)
+        cv2.putText(annotated, label, (x1, max(y1 - 4, 12)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+
+    # Draw missed GT boxes (Blue = FN)
+    for j, gt in enumerate(gt_boxes):
+        if not gt_matched[j]:
+            x1, y1, x2, y2 = gt["bbox"]
+            color = (255, 128, 0)        # Blue in BGR
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2, cv2.LINE_AA)
+            cv2.rectangle(annotated, (x1 + 3, y1 + 3), (x2 - 3, y2 - 3), color, 1, cv2.LINE_AA)
+            label = f"GT:{class_names.get(gt['class'], str(gt['class']))} (missed)"
+            cv2.putText(annotated, label, (x1, max(y1 - 4, 12)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA)
+            n_fn += 1
+
+    return annotated, {"TP": n_tp, "FP": n_fp, "FN": n_fn, "Misclassified": n_mis}
+
+
 def main():
     from ultralytics import YOLO
 
@@ -40,15 +134,15 @@ def main():
     names = model.names
     target_indices = {i for i, n in names.items() if n in TARGET_IDS}
 
-    # Pick 12 images: all 3 test + all 4 val + 5 train
+    # Pick images: all test + all val + 5 train
     splits = {
-        "test": os.path.join(PROJECT_ROOT, "data", "synthetic_grid", "images", "test"),
-        "val":  os.path.join(PROJECT_ROOT, "data", "synthetic_grid", "images", "val"),
+        "test":  os.path.join(PROJECT_ROOT, "data", "synthetic_grid", "images", "test"),
+        "val":   os.path.join(PROJECT_ROOT, "data", "synthetic_grid", "images", "val"),
         "train": os.path.join(PROJECT_ROOT, "data", "synthetic_grid", "images", "train"),
     }
     lbl_splits = {
-        "test": os.path.join(PROJECT_ROOT, "data", "synthetic_grid", "labels", "test"),
-        "val":  os.path.join(PROJECT_ROOT, "data", "synthetic_grid", "labels", "val"),
+        "test":  os.path.join(PROJECT_ROOT, "data", "synthetic_grid", "labels", "test"),
+        "val":   os.path.join(PROJECT_ROOT, "data", "synthetic_grid", "labels", "val"),
         "train": os.path.join(PROJECT_ROOT, "data", "synthetic_grid", "labels", "train"),
     }
 
@@ -62,6 +156,7 @@ def main():
             selected.append((split, f))
 
     print(f"Generating {len(selected)} gallery examples")
+    print(f"Color legend: Green=TP  Orange=Misclassified  Red=FP  Blue=FN")
     os.makedirs(GALLERY_DIR, exist_ok=True)
 
     captions = []
@@ -71,67 +166,49 @@ def main():
 
         # Model prediction
         results = model.predict(img_path, conf=0.1, imgsz=640, verbose=False)
-        annotated = results[0].plot()
+        dets = results[0].boxes
 
-        # Ground truth overlay
+        # Load image and GT
         img = cv2.imread(img_path)
         h, w = img.shape[:2]
-        n_gt = 0
-        n_target_gt = 0
-        if os.path.exists(lbl_path):
-            with open(lbl_path) as f:
-                for line in f:
-                    parts = line.strip().split()
-                    if len(parts) < 5:
-                        continue
-                    cls_idx = int(parts[0])
-                    cx, cy, bw, bh = map(float, parts[1:5])
-                    x1 = int((cx - bw / 2) * w)
-                    y1 = int((cy - bh / 2) * h)
-                    x2 = int((cx + bw / 2) * w)
-                    y2 = int((cy + bh / 2) * h)
-                    color = (0, 200, 0) if cls_idx in target_indices else (200, 100, 100)
-                    cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-                    label = names.get(cls_idx, str(cls_idx))
-                    if cls_idx in target_indices:
-                        label += " *"
-                    cv2.putText(img, label, (x1, max(y1 - 4, 12)),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA)
-                    n_gt += 1
-                    if cls_idx in target_indices:
-                        n_target_gt += 1
+        gt_boxes = load_gt_boxes(lbl_path, w, h)
 
-        # Side-by-side: prediction | ground truth
-        annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        combined = np.concatenate([annotated_rgb, img_rgb], axis=1)
-        combined_bgr = cv2.cvtColor(combined, cv2.COLOR_RGB2BGR)
+        # Annotate with 4-color coding
+        annotated, counts = annotate_with_errors(img, gt_boxes, dets, names)
 
+        # Save
         out_name = f"{split}_{img_name}"
-        cv2.imwrite(os.path.join(GALLERY_DIR, out_name), combined_bgr)
+        cv2.imwrite(os.path.join(GALLERY_DIR, out_name), annotated)
 
         # Caption
-        n_det = len(results[0].boxes)
-        dets = []
-        for b in results[0].boxes:
-            ci = int(b.cls[0])
-            dets.append((names.get(ci, str(ci)), b.conf[0].item(), ci in target_indices))
-        dets.sort(key=lambda x: -x[1])
-        top = ", ".join(f"{c}{('*' if t else '')}" for c, _, t in dets[:5])
+        n_gt_target = sum(1 for g in gt_boxes if g["class"] in target_indices)
+        parts = []
+        if counts["TP"] > 0:
+            parts.append(f"{counts['TP']} TP")
+        if counts["Misclassified"] > 0:
+            parts.append(f"{counts['Misclassified']} Misclassified")
+        if counts["FP"] > 0:
+            parts.append(f"{counts['FP']} FP")
+        if counts["FN"] > 0:
+            parts.append(f"{counts['FN']} FN (missed)")
         caption = (f"{split}/{img_name} | "
-                   f"Pred: {n_det} det (top: {top}) | "
-                   f"GT: {n_gt} faces ({n_target_gt} target)")
+                   f"{"  ".join(parts) if parts else "no detections"} | "
+                   f"GT: {len(gt_boxes)} faces ({n_gt_target} target)")
         captions.append(caption)
-        print(f"  {out_name}: {n_det} det, {n_gt} GT")
+        print(f"  {out_name}: {counts['TP']} TP, {counts['Misclassified']} Mis, "
+              f"{counts['FP']} FP, {counts['FN']} FN")
 
     # Write captions
     cap_path = os.path.join(GALLERY_DIR, "captions.md")
     with open(cap_path, "w") as f:
         f.write("# Detection Visualization Gallery\n\n")
-        f.write("Left panel: model prediction (boxes + class + confidence).  ")
-        f.write("Right panel: ground truth (green = target celebrity `*`, red = other).\n\n")
+        f.write("**Color legend:**  \\n")
+        f.write("- **Green** = TP (correct class, IoU >= 0.5)  \\n")
+        f.write("- **Orange** = Misclassified (IoU >= 0.5, wrong class)  \\n")
+        f.write("- **Red** = FP (no GT match, IoU < 0.5)  \\n")
+        f.write("- **Blue** = FN (missed GT box)\n\n")
         for i, cap in enumerate(captions):
-            fname = cap.split(" | ")[0]
+            fname = cap.split(" | " )[0]
             f.write(f"### {i+1}. {fname}\n")
             f.write(f"{cap.split('|', 2)[-1].strip()}\n\n")
     print(f"\nSaved {len(selected)} images + captions to {GALLERY_DIR}")

@@ -2,7 +2,7 @@ task: detect
 mode: train
 model: yolov8n.pt
 data: h:\Education\Northeastern\MS_DAE\IE7615\Project_1\data\synthetic_grid\data.yaml
-epochs: 10
+epochs: 20
 time: null
 patience: 100
 batch: 16
@@ -17,7 +17,7 @@ name: sweep_lr=0.01,_640px
 exist_ok: true
 pretrained: true
 cls_remap: true
-optimizer: auto
+optimizer: SGD
 verbose: false
 seed: 0
 deterministic: true

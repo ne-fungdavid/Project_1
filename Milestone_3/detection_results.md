@@ -47,17 +47,52 @@ Extracted from `runs/detect/celebrity_detection/yolov8n_finetune/results.csv`:
 
 ## Hyperparameter Sweep
 
-A 5-configuration sweep over learning rate × image size was run (each 10 epochs) to identify the best starting point:
+A 5-configuration sweep over learning rate × image size was run (each 20 epochs, optimizer=SGD) to identify the best starting point:
 
-| Config | lr0 | imgsz | mAP@0.5 (best epoch) | mAP@0.5:0.95 | Notes |
-|:------:|:---:|:-----:|:--------------------:|:------------:|-------|
-| 1 | 0.001 | 640 | 0.041 | 0.032 | Low LR — slow convergence |
-| 2 | 0.001 | 960 | 0.035 | 0.028 | Larger image, low LR |
-| 3 | 0.005 | 640 | 0.052 | 0.040 | Mid LR |
-| 4 | 0.005 | 960 | 0.047 | 0.036 | Mid LR, larger image |
-| 5 | 0.010 | 640 | 0.061 | 0.047 | **Best** — highest mAP |
+| Config | lr0 | imgsz | mAP@0.5 | mAP@0.5:0.95 | Precision | Recall |
+|:------:|:---:|:-----:|:-------:|:------------:|:---------:|:------:|
+| baseline (lr=0.01, 640px) | 0.01 | 640 | **0.1680** | 0.1612 | 0.0354 | 0.8333 |
+| lr_low (lr=0.001, 640px) | 0.001 | 640 | 0.1093 | 0.0807 | 0.0328 | 0.7917 |
+| lr_high (lr=0.1, 640px) | 0.1 | 640 | 0.1051 | 0.0818 | 0.0341 | 0.9722 |
+| imgsz (lr=0.01, 480px) | 0.01 | 480 | 0.1452 | 0.1367 | 0.0396 | 0.9167 |
+| imgsz (lr=0.01, 960px) | 0.01 | 960 | **0.1734** | 0.1612 | 0.0384 | 0.8750 |
 
-**Result:** The sweep confirmed that a moderate learning rate (0.005–0.01) with 640 px image size converges fastest on this small dataset. The final 100-epoch run used `lr0=0.005` with a linear decay factor (`lrf=0.01`), which allowed the classification head to converge steadily without oscillation.
+**Result:** The sweep confirms a learning-rate sweet spot at lr=0.01. The low-LR config (0.001) underfits because weights barely move from the pretrained init in 20 epochs. The high-LR config (0.1) overshoots and destabilises learning, oscillating around the loss minimum. The baseline (lr=0.01) strikes the best balance for this small dataset. Image size 960 px gives a marginal mAP boost (+0.005) at the cost of higher GPU memory, while 480 px loses detail and drops mAP by ~0.02. The final 100-epoch production run used `lr0=0.005` with linear decay (`lrf=0.01`), which allowed the classification head to converge steadily without oscillation.
+
+## Per-Class mAP@0.5 (Test Set)
+
+| Class | mAP@0.5 | mAP@0.5:0.95 |
+|:-----:|:-------:|:------------:|
+| 3 | 0.9125 | 0.9125 |
+| 7 * | 0.9950 | 0.9950 |
+| 797 * | 0.6083 | 0.6083 |
+| 1212 | 0.7450 | 0.7450 |
+| 2336 | 0.0693 | 0.0693 |
+| 2619 * | 0.9950 | 0.9950 |
+| 2970 | 0.9950 | 0.9950 |
+| 4422 | 0.1990 | 0.1990 |
+| 4428 * | 0.1030 | 0.1030 |
+| 5695 | 0.0865 | 0.0865 |
+| 7007 * | 0.7890 | 0.7890 |
+| 8335 | 0.9950 | 0.9950 |
+| 10002 | 0.7890 | 0.7890 |
+
+* = target celebrity
+
+The 5 target identities (7, 797, 2619, 4428, 7007) show a wide spread: celebrities 7 and 2619 achieve near-perfect AP (0.995), while 4428 (0.103) is less reliable — consistent with the smaller number of labelled boxes for that identity in the training set.
+
+## Detection Error Categories
+
+In object detection, evaluation uses 4 categories per detection:
+
+| Category | Definition | Color (gallery) |
+|:--------:|:----------:|:---------------:|
+| **TP** | IoU ≥ 0.5 with a GT box AND correct class | Green |
+| **Misclassified** | IoU ≥ 0.5 with a GT box BUT wrong class | Orange |
+| **FP** | IoU < 0.5 with all GT boxes (false positive) | Red |
+| **FN** | GT box not matched by any detection (missed) | Blue |
+
+Note: A *true negative* (TN) is not meaningful in object detection because the number of possible "negative" background locations is unbounded. Standard detection evaluation therefore relies on TP, FP, FN, and per-class AP (mAP).
 
 ## Training & Validation Loss Curves
 

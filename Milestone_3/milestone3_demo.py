@@ -107,13 +107,15 @@ def main():
             low = 0.001
             print(f"  (0 det at conf={conf}, retrying at conf={low})")
             results = model.predict(img_path, conf=low, imgsz=args.imgsz, verbose=False)
-            for b in results[0].boxes:
-                cls_idx = int(b.cls[0])
+            dets = results[0].boxes
+            for i in range(len(dets)):
+                cls_idx = int(dets.cls[i].item())
                 detections.append({
                     "class_id": names.get(cls_idx, str(cls_idx)),
-                    "confidence": b.conf[0].item(),
+                    "class_idx": cls_idx,
+                    "confidence": float(dets.conf[i].item()),
                     "is_target": cls_idx in target_indices,
-                    "bbox": [float(x) for x in b.xyxy[0].tolist()],
+                    "bbox": [float(x) for x in dets.xyxy[i].tolist()],
                 })
             conf = low
         all_results.append((img_path, results, detections, conf))
@@ -162,56 +164,59 @@ def main():
         for cls_idx, (cx, cy, bw, bh) in gt:
             gt_pixel.append((cls_idx, [(cx-bw/2)*iw, (cy-bh/2)*ih, (cx+bw/2)*iw, (cy+bh/2)*ih]))
         matched_gt = set()
+        # 4-way classification: TP / Misclassified / FP / FN
         for d in detections:
             best_iou, best_cls = 0, -1
             for gi, (_ci, gbox) in enumerate(gt_pixel):
                 v = iou(d["bbox"], gbox)
                 if v > best_iou:
                     best_iou, best_cls = v, gi
-            d["correct"] = best_iou >= 0.5
-            d["matched_gt"] = best_cls if best_iou >= 0.5 else -1
-            if best_iou >= 0.5:
+            if best_iou >= 0.5 and best_cls >= 0:
+                gt_cls = gt_pixel[best_cls][0]
+                d["status"] = "TP" if d["class_idx"] == gt_cls else "Misclassified"
+                d["matched_gt"] = best_cls
                 matched_gt.add(best_cls)
+            else:
+                d["status"] = "FP"
+                d["matched_gt"] = -1
 
     # --- Print summary ---
+    # Legend:  ✓ = TP (correct)   ~ = Misclassified   ✗ = FP   — = FN (missed)
     print(f"\n{'=' * 60}")
-    print(f"DETECTION RESULTS  (✓ = correct  ✗ = false positive  * = target)")
+    print(f"DETECTION RESULTS  (✓ = TP   ~ = Misclassified   ✗ = FP   * = target)")
     print(f"{'=' * 60}")
-    n_total = n_correct = n_fp = n_missed_total = 0
+    totals = {"TP": 0, "Mis": 0, "FP": 0, "FN": 0, "det": 0}
     for img_path, _res, detections, conf_used in all_results:
         img_name = os.path.basename(img_path)
         gt = load_gt(img_path)
-        n_corr = sum(1 for d in detections if d.get("correct") is True)
-        n_fp = sum(1 for d in detections if d.get("correct") is False)
+        n_tp  = sum(1 for d in detections if d.get("status") == "TP")
+        n_mis = sum(1 for d in detections if d.get("status") == "Misclassified")
+        n_fp  = sum(1 for d in detections if d.get("status") == "FP")
+        n_fn  = 0
         if gt is not None:
-            matched = {d.get("matched_gt", -1) for d in detections if d.get("correct")}
-            n_missed = sum(1 for i in range(len(gt)) if i not in matched)
-        else:
-            n_missed = 0
-        n_total += len(detections); n_correct += n_corr; n_fp += n_fp; n_missed_total += n_missed
-        status = f"{n_corr} correct, {n_fp} false"
+            matched = {d.get("matched_gt", -1) for d in detections if d.get("matched_gt", -1) >= 0}
+            n_fn = sum(1 for i in range(len(gt)) if i not in matched)
+        totals["TP"] += n_tp; totals["Mis"] += n_mis
+        totals["FP"] += n_fp; totals["FN"] += n_fn
+        totals["det"] += len(detections)
+        parts = [f"{n_tp} TP", f"{n_mis} Mis", f"{n_fp} FP"]
         if gt is not None:
-            status += f", {n_missed} missed"
-        print(f"\n  {img_name}  [conf={conf_used}]  {status}")
+            parts.append(f"{n_fn} FN")
+        print(f"\n  {img_name}  [conf={conf_used}]  " + ", ".join(parts))
         for d in sorted(detections, key=lambda x: -x["confidence"]):
-            if d.get("correct") is True:
-                mark = "  ✓"
-            elif d.get("correct") is False:
-                mark = "  ✗"
-            else:
-                mark = ""
+            mark = {"TP": "  ✓", "Misclassified": "  ~", "FP": "  ✗"}.get(d.get("status", ""), "")
             star = " *" if d["is_target"] else ""
             print(f"    {d['class_id']:>6s}  conf={d['confidence']:.4f}{star}{mark}")
-        if gt is not None and n_missed > 0:
-            matched = {d.get("matched_gt", -1) for d in detections if d.get("correct")}
+        if gt is not None and n_fn > 0:
+            matched = {d.get("matched_gt", -1) for d in detections if d.get("matched_gt", -1) >= 0}
             missed_names = [names.get(gt[i][0], str(gt[i][0])) for i in range(len(gt)) if i not in matched]
             print(f"    MISSED: {', '.join(missed_names)}")
 
     print(f"\n{'=' * 60}")
     if any(load_gt(p) is not None for p, *_ in all_results):
-        print(f"TOTAL: {n_total} detections  |  {n_correct} correct  {n_fp} false  {n_missed_total} missed")
+        print(f"TOTAL: {totals['det']} det  |  {totals['TP']} TP  {totals['Mis']} Mis  {totals['FP']} FP  {totals['FN']} FN")
     else:
-        print(f"TOTAL: {n_total} detections (no ground truth available)")
+        print(f"TOTAL: {totals['det']} detections (no ground truth available)")
     print(f"{'=' * 60}\n")
 
     if args.save:
