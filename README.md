@@ -2,7 +2,7 @@
 
 **Group:** David Fung (NUID: 003105587)
 
-A discriminative computer-vision pipeline for **celebrity identification and detection**. Across three graded milestones the project (1) curates a small, diverse set of celebrity identities, (2) builds a synthetic **grid-based multi-face** detection dataset (9 distinct faces per frame), and (3) fine-tunes and evaluates a YOLOv8 detector on it. The dataset and the notebook for every step are committed to this repository, so the pipeline is reproducible end-to-end from a fresh clone.
+A discriminative computer-vision pipeline for **celebrity identification and detection**. Across four graded milestones the project (1) curates a small, diverse set of celebrity identities and builds a single-face **ResNet50** classifier, (2) constructs a synthetic **grid-based multi-face** detection dataset (9 distinct faces per frame), (3) fine-tunes and evaluates a **YOLOv8** detector on it, and (4) integrates the two into an end-to-end pipeline with a final results gallery and report. The dataset, notebooks, trained checkpoints (or retraining scripts), and every figure are committed to this repository, so the pipeline is reproducible end-to-end from a fresh clone.
 
 ## Project Overview
 
@@ -10,7 +10,8 @@ A discriminative computer-vision pipeline for **celebrity identification and det
 |:---------:|--------|------|
 | **1** | `Milestone_1/` | Select a diverse subset of celebrity identities from CelebA and build a single-face classification baseline. |
 | **2** | `Milestone_2/` | Construct a synthetic 3×3 grid detection dataset (9 distinct celebrity faces per image) with YOLO-format annotations and a train/val/test split. |
-| **3** | `Milestone_3/` | Fine-tune YOLOv8 on the synthetic dataset, visualise training, and evaluate on the held-out test split. |
+| **3** | `Milestone_3/` | Fine-tune YOLOv8 on the synthetic dataset, visualise training, run a hyperparameter sweep, and evaluate on the held-out test split. |
+| **4** | `Milestone_4/` | Integrate classification + detection into one pipeline, curate the final results gallery, and write the final report (incl. ethical considerations). |
 
 The identity-selection rationale is also captured in `DavidFung_Project1_Selection.ipynb` and `Milestone_1/project_1_proposal.pdf`.
 
@@ -36,12 +37,12 @@ The identity-selection rationale is also captured in `DavidFung_Project1_Selecti
 │   ├── demo_output/                          # (generated) annotated test images
 │   └── runs/                                 # (generated) training runs, weights, plots
 ├── Milestone_4/
+│   ├── final_report.md                       # Final report (6–8 pp; export to PDF)
 │   ├── celebrity_pipeline.py                 # Integrated detection + identification pipeline
 │   ├── train_classifier.py                   # Retrain & save ResNet50 classifier
 │   ├── generate_gallery.py                   # Final results gallery generator
 │   ├── models/
-│   │   ├── resnet50_classifier.keras         # Saved classifier (137 MB)
-│   │   └── resnet50_weights.h5               # Classifier weights (97 MB)
+│   │   └── resnet50_classifier.keras         # Saved classifier (~130 MB, local-only / retrainable)
 │   ├── gallery/                              # Final results (25 correct + 8 errors + 11 detection)
 │   └── pipeline_output/                      # (generated) annotated pipeline outputs
 ├── data/
@@ -149,13 +150,14 @@ The full pipeline is in `Milestone_3/DavidFung_Project1.Milestone3.ipynb`. Run c
 | Task | What it does |
 |:----:|:------------|
 | 1 | Set up paths, verify data.yaml and image/label counts |
-| 2 | Fine-tune YOLOv8n on the grid dataset (100 epochs, lr0=0.005, lrf=0.01) |
+| 2 | Fine-tune YOLOv8n on the grid dataset (100 epochs, SGD, lr0=0.005, lrf=0.01) |
 | 3 | Display training & validation loss curves from `results.csv` |
-| 4 | Report final metrics (mAP@0.5, mAP@0.5:0.95, precision, recall) |
-| 5 | Run inference on the 3 held-out test images, print per-image detections |
-| 6 | Evaluate on the val split with `model.val()` |
-| 7 | Hyperparameter sweep: lr0 × imgsz (5 configs, 3 epochs each) |
-| 8 | Build a 2-row visualization gallery (predictions vs ground truth) |
+| 4 | Per-class mAP@0.5 bar chart (target vs non-target) |
+| 5 | Test-set metrics (mAP@0.5, mAP@0.5:0.95, precision, recall) + per-class table |
+| 6 | Save & summarise the best checkpoint |
+| 7 | Hyperparameter sweep: lr0 × imgsz (5 configs, 20 epochs, SGD) |
+| 8 | 4-colour detection gallery (Green=TP, Orange=Misclassified, Red=FP, Blue=FN) |
+| 8b | Per-target-class TP / Misclassified / FN summary on the test set |
 
 **Key hyperparameters** (selected via sweep): `lr0=0.005`, `lrf=0.01`, `imgsz=640`, `batch=16`, `epochs=100`.
 
@@ -193,7 +195,13 @@ python celebrity_pipeline.py --image photo.jpg --save # save annotated output
 python generate_gallery.py
 ```
 
-**Pipeline:** Input Image → YOLOv8 (detect faces) → ResNet50 (identify each) → Annotated output
+**Pipeline:** Input Image → YOLOv8 (detect faces, 13-class) → ResNet50 (identify each face, 5-class) → Annotated output. Any face the identifier is not confident about falls back to the detector's label, so a box is always returned — important for the live demo on unseen images.
+
+> **Classifier checkpoint.** The 5-class ResNet50 is retrained with `python train_classifier.py`
+> (≈ 90 s) and saved to `Milestone_4/models/resnet50_classifier.keras`. That file is ~130 MB
+> (over GitHub's 100 MB file limit), so it is kept locally and **not** pushed; the retraining
+> script is committed, satisfying the "checkpoint **or** retraining script" requirement. The
+> YOLOv8n detector checkpoint (`best.pt`, ~6 MB) **is** committed under `Milestone_3/runs/...`.
 
 ### 6. Outputs
 
@@ -206,6 +214,21 @@ python generate_gallery.py
 | `Milestone_4/gallery/` | Final results (25 correct + 8 errors + 11 detection) |
 | `Milestone_4/pipeline_output/` | Annotated pipeline outputs |
 | `requirements.txt` | Full dependency list |
+
+## Final Deliverables & Submission
+
+| Deliverable | Location |
+|:------------|:---------|
+| **Final report** (6–8 pp; export to PDF for Canvas) | `Milestone_4/final_report.md` |
+| **GitHub repository** at a tagged commit / specific hash | this repo |
+| **Final results gallery** (≥20 correct, ≥5 misclassified + analysis, ≥10 multi-face) | `Milestone_4/gallery/` |
+| **Trained checkpoints / retrain scripts** | `Milestone_3/runs/.../best.pt` (committed), `train_classifier.py` (classifier) |
+| **README** with setup, layout, reproduction commands | `README.md` (this file) |
+| **Environment spec** | `requirements.txt` |
+| **Presentation & live demo** (10–15 min, Zoom) | scheduled slot — run `celebrity_pipeline.py --image <unseen.jpg>` |
+
+**Ethical considerations** are covered in `Milestone_4/final_report.md` (Section 6, ≈ 1 page):
+facial-recognition bias, privacy/consent, and misuse risk, with concrete mitigations.
 
 ## Notes
 

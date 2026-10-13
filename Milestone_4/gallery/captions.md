@@ -34,22 +34,22 @@
 
 ### Misclassified (with analysis)
 
-1. True: **797**  Predicted: **7007**  (conf=0.406)
-   Analysis: Model confused similar facial features. Both are target celebrities in the 5-class set.
-2. True: **2619**  Predicted: **7**  (conf=0.410)
-   Analysis: Model confused similar facial features. Both are target celebrities in the 5-class set.
-3. True: **2619**  Predicted: **7**  (conf=0.781)
-   Analysis: Model confused similar facial features. Both are target celebrities in the 5-class set.
-4. True: **7007**  Predicted: **4428**  (conf=0.615)
-   Analysis: Model confused similar facial features. Both are target celebrities in the 5-class set.
-5. True: **7007**  Predicted: **7**  (conf=0.548)
-   Analysis: Model confused similar facial features. Both are target celebrities in the 5-class set.
-6. True: **7007**  Predicted: **797**  (conf=0.467)
-   Analysis: Model confused similar facial features. Both are target celebrities in the 5-class set.
-7. True: **7007**  Predicted: **7**  (conf=0.914)
-   Analysis: Model confused similar facial features. Both are target celebrities in the 5-class set.
-8. True: **7007**  Predicted: **7**  (conf=0.507)
-   Analysis: Model confused similar facial features. Both are target celebrities in the 5-class set.
+1. True: **797**  Predicted: **7007**  (confidence=0.406)  — `164035.jpg`
+   Analysis: A cross-identity confusion between two rostered celebrities. The softmax assigned the highest (but not decisive) probability to `7007` instead of the true identity `797`. This indicates the two faces share salient features and the model lacked enough separating signal for this specific pair — the usual remedy is more images and harder negatives for both identities, or a similarity/verification stage on top.
+2. True: **2619**  Predicted: **7**  (confidence=0.410)  — `037687.jpg`
+   Analysis: A cross-identity confusion between two rostered celebrities. The softmax assigned the highest (but not decisive) probability to `7` instead of the true identity `2619`. This indicates the two faces share salient features and the model lacked enough separating signal for this specific pair — the usual remedy is more images and harder negatives for both identities, or a similarity/verification stage on top.
+3. True: **2619**  Predicted: **7**  (confidence=0.781)  — `104026.jpg`
+   Analysis: A cross-identity confusion between two rostered celebrities. The softmax assigned the highest (but not decisive) probability to `7` instead of the true identity `2619`. This indicates the two faces share salient features and the model lacked enough separating signal for this specific pair — the usual remedy is more images and harder negatives for both identities, or a similarity/verification stage on top.
+4. True: **7007**  Predicted: **4428**  (confidence=0.615)  — `010363.jpg`
+   Analysis: A cross-identity confusion between two rostered celebrities. The softmax assigned the highest (but not decisive) probability to `4428` instead of the true identity `7007`. This indicates the two faces share salient features and the model lacked enough separating signal for this specific pair — the usual remedy is more images and harder negatives for both identities, or a similarity/verification stage on top.
+5. True: **7007**  Predicted: **7**  (confidence=0.548)  — `035390.jpg`
+   Analysis: A cross-identity confusion between two rostered celebrities. The softmax assigned the highest (but not decisive) probability to `7` instead of the true identity `7007`. This indicates the two faces share salient features and the model lacked enough separating signal for this specific pair — the usual remedy is more images and harder negatives for both identities, or a similarity/verification stage on top.
+6. True: **7007**  Predicted: **797**  (confidence=0.467)  — `036181.jpg`
+   Analysis: A cross-identity confusion between two rostered celebrities. The softmax assigned the highest (but not decisive) probability to `797` instead of the true identity `7007`. This indicates the two faces share salient features and the model lacked enough separating signal for this specific pair — the usual remedy is more images and harder negatives for both identities, or a similarity/verification stage on top.
+7. True: **7007**  Predicted: **7**  (confidence=0.914)  — `095414.jpg`
+   Analysis: A cross-identity confusion between two rostered celebrities. The softmax assigned the highest (but not decisive) probability to `7` instead of the true identity `7007`. This indicates the two faces share salient features and the model lacked enough separating signal for this specific pair — the usual remedy is more images and harder negatives for both identities, or a similarity/verification stage on top.
+8. True: **7007**  Predicted: **7**  (confidence=0.507)  — `128347.jpg`
+   Analysis: A cross-identity confusion between two rostered celebrities. The softmax assigned the highest (but not decisive) probability to `7` instead of the true identity `7007`. This indicates the two faces share salient features and the model lacked enough separating signal for this specific pair — the usual remedy is more images and harder negatives for both identities, or a similarity/verification stage on top.
 
 ## Multi-Face Detection (YOLOv8)
 

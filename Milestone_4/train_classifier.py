@@ -164,12 +164,6 @@ def main():
     size_mb = os.path.getsize(SAVE_PATH) / 1e6
     print(f"\nModel saved to: {SAVE_PATH} ({size_mb:.1f} MB)")
 
-    # Save weights-only for clean loading in the pipeline
-    weights_path = os.path.join(SCRIPT_DIR, "models", "resnet50_weights.h5")
-    model.save_weights(weights_path)
-    w_mb = os.path.getsize(weights_path) / 1e6
-    print(f"Weights saved to: {weights_path} ({w_mb:.1f} MB)")
-
     import shutil
     shutil.rmtree(ckpt_dir, ignore_errors=True)
     print("Done.")

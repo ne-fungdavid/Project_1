@@ -124,7 +124,7 @@ def main():
 
     # Write captions
     cap_path = os.path.join(GALLERY_DIR, "captions.md")
-    with open(cap_path, "w") as f:
+    with open(cap_path, "w", encoding="utf-8") as f:
         f.write("# Final Results Gallery (Milestone 4)\n\n")
 
         f.write("## Single-Face Classification (ResNet50)\n\n")
@@ -138,9 +138,13 @@ def main():
         f.write("\n### Misclassified (with analysis)\n\n")
         for i, e in enumerate(errors[:10]):
             f.write(f"{i+1}. True: **{e['true']}**  Predicted: **{e['pred']}**  "
-                     f"(conf={e['prob']:.3f})\n")
-            f.write(f"   Analysis: Model confused similar facial features. "
-                     f"Both are target celebrities in the 5-class set.\n")
+                     f"(confidence={e['prob']:.3f})  — `{os.path.basename(e['file'])}`\n")
+            f.write(f"   Analysis: A cross-identity confusion between two rostered celebrities. "
+                     f"The softmax assigned the highest (but not decisive) probability to "
+                     f"`{e['pred']}` instead of the true identity `{e['true']}`. This indicates the "
+                     f"two faces share salient features and the model lacked enough separating "
+                     f"signal for this specific pair — the usual remedy is more images and harder "
+                     f"negatives for both identities, or a similarity/verification stage on top.\n")
 
         f.write("\n## Multi-Face Detection (YOLOv8)\n\n")
         f.write("Reused from Milestone 3 gallery (11 annotated grid images).\n\n")

@@ -15,35 +15,59 @@
 | Device | CUDA GPU (NVIDIA GeForce RTX 5070 Ti) |
 | Ultralytics | 8.4.163 |
 
-## Evaluation Metrics (Final Epoch — 100)
+## Evaluation Metrics
 
-Extracted from `runs/detect/celebrity_detection/yolov8n_finetune/results.csv`:
+Two splits are reported. The **held-out test split** (3 images / 27 instances) is the primary
+figure and is the one cited in the final report; the **validation split** (4 images) is the one
+tracked in `results.csv` during training. The committed checkpoint is the final-epoch model
+(`best.pt` == epoch 100 of `results.csv`).
+
+### Held-out test split (primary)
 
 | Metric | Value |
-|--------|-------|
-| **mAP@0.5** | **0.513** (51.3 %) |
-| **mAP@0.5:0.95** | **0.508** (50.8 %) |
-| Precision (box) | 0.358 |
-| Recall (box) | 0.712 |
-| Val box loss | 0.151 |
-| Val cls loss | 2.410 |
-| Val DFL loss | 0.862 |
+|:-------|:-----:|
+| **mAP@0.5** | **0.624** |
+| **mAP@0.5:0.95** | **0.624** |
+| Precision (mean per-class) | 0.472 |
+| Recall (mean per-class) | 0.625 |
+| Images / instances | 3 / 27 |
 
-### Per-EPOCH Progression (Every 10th Epoch)
+### Validation split (final epoch, from `results.csv`)
 
-| Epoch | mAP@0.5 | mAP@0.5:0.95 | Precision | Recall | Val box loss |
-|:-----:|:-------:|:------------:|:---------:|:------:|:------------:|
-| 1 | 0.073 | 0.051 | 0.070 | 0.308 | 0.403 |
-| 11 | 0.076 | 0.058 | 0.037 | 0.538 | 0.399 |
-| 21 | 0.176 | 0.162 | 0.051 | 1.000 | 0.351 |
-| 31 | 0.215 | 0.209 | 0.053 | 1.000 | 0.232 |
-| 41 | 0.198 | 0.193 | 0.051 | 1.000 | 0.226 |
-| 51 | 0.245 | 0.245 | 0.047 | 1.000 | 0.179 |
-| 61 | 0.300 | 0.300 | 0.043 | 1.000 | 0.204 |
-| 71 | 0.453 | 0.453 | 0.422 | 0.550 | 0.138 |
-| 81 | 0.518 | 0.518 | 0.593 | 0.462 | 0.134 |
-| 91 | 0.526 | 0.521 | 0.388 | 0.637 | 0.138 |
-| **100** | **0.513** | **0.508** | **0.358** | **0.712** | **0.151** |
+| Metric | Value |
+|:-------|:-----:|
+| mAP@0.5 | 0.470 |
+| mAP@0.5:0.95 | 0.468 |
+| Precision (mean per-class) | 0.362 |
+| Recall (mean per-class) | 0.563 |
+| Val box loss | 0.130 |
+| Val cls loss | 2.379 |
+| Val DFL loss | 0.850 |
+
+> **Why the test split is higher here.** On this very small dataset (3–4 images per split)
+> per-class performance is dominated by a handful of instances, and the test and validation
+> splits contain *different* celebrity instances, so they do not agree. This is a small-N
+> artifact, not data leakage — the model is never trained on either split.
+> **mAP@0.5 == mAP@0.5:0.95** on both splits is a direct consequence of the grid geometry: each
+> detection is either a near-perfect match (IoU > 0.95) or a non-match (IoU < 0.5), so the
+> average precision is identical across the 0.5–0.95 IoU band.
+> **Recall** is YOLO's *unweighted mean of per-class recalls*, not `total_TP / total_GT`.
+
+### Per-EPOCH Progression (validation split, every 10th epoch)
+
+| Epoch | mAP@0.5 | mAP@0.5:0.95 | Precision | Recall |
+|:-----:|:-------:|:------------:|:---------:|:------:|
+| 1 | 0.072 | 0.050 | 0.067 | 0.308 |
+| 11 | 0.147 | 0.112 | 0.044 | 0.846 |
+| 21 | 0.227 | 0.212 | 0.055 | 1.000 |
+| 31 | 0.168 | 0.162 | 0.055 | 1.000 |
+| 41 | 0.254 | 0.250 | 0.044 | 1.000 |
+| 51 | 0.234 | 0.234 | 0.034 | 1.000 |
+| 61 | 0.347 | 0.342 | 0.034 | 1.000 |
+| 71 | 0.361 | 0.357 | 0.177 | 0.927 |
+| 81 | 0.416 | 0.416 | 0.400 | 0.374 |
+| 91 | 0.451 | 0.451 | 0.422 | 0.437 |
+| **100** | **0.470** | **0.468** | **0.362** | **0.563** |
 
 ## Hyperparameter Sweep
 
@@ -59,27 +83,30 @@ A 5-configuration sweep over learning rate × image size was run (each 20 epochs
 
 **Result:** The sweep confirms a learning-rate sweet spot at lr=0.01. The low-LR config (0.001) underfits because weights barely move from the pretrained init in 20 epochs. The high-LR config (0.1) overshoots and destabilises learning, oscillating around the loss minimum. The baseline (lr=0.01) strikes the best balance for this small dataset. Image size 960 px gives a marginal mAP boost (+0.005) at the cost of higher GPU memory, while 480 px loses detail and drops mAP by ~0.02. The final 100-epoch production run used `lr0=0.005` with linear decay (`lrf=0.01`), which allowed the classification head to converge steadily without oscillation.
 
-## Per-Class mAP@0.5 (Test Set)
+## Per-Class Metrics (Test Split)
 
-| Class | mAP@0.5 | mAP@0.5:0.95 |
-|:-----:|:-------:|:------------:|
-| 3 | 0.9125 | 0.9125 |
-| 7 * | 0.9950 | 0.9950 |
-| 797 * | 0.6083 | 0.6083 |
-| 1212 | 0.7450 | 0.7450 |
-| 2336 | 0.0693 | 0.0693 |
-| 2619 * | 0.9950 | 0.9950 |
-| 2970 | 0.9950 | 0.9950 |
-| 4422 | 0.1990 | 0.1990 |
-| 4428 * | 0.1030 | 0.1030 |
-| 5695 | 0.0865 | 0.0865 |
-| 7007 * | 0.7890 | 0.7890 |
-| 8335 | 0.9950 | 0.9950 |
-| 10002 | 0.7890 | 0.7890 |
+Per-class metrics on the test split (* = target celebrity). Identity `7` has no ground-truth
+instance in this particular test split and is therefore absent from the table.
 
-* = target celebrity
+| Class | Recall | Precision | mAP@0.5 |
+|:-----:|:------:|:---------:|:-------:|
+| 3 | 0.667 | 0.879 | 0.9125 |
+| 797 * | 1.000 | 0.521 | 0.9950 |
+| 1212 | 0.667 | 0.409 | 0.6083 |
+| 2336 | 0.500 | 0.345 | 0.7450 |
+| 2619 * | 0.000 | 1.000 | 0.0693 |
+| 2970 | 1.000 | 0.238 | 0.9950 |
+| 4422 | 1.000 | 0.384 | 0.9950 |
+| 4428 * | 1.000 | 0.191 | 0.1990 |
+| 5695 | 0.000 | 0.000 | 0.0865 |
+| 7007 * | 0.000 | 1.000 | 0.1026 |
+| 8335 | 1.000 | 0.292 | 0.9950 |
+| 10002 | 0.667 | 0.406 | 0.7888 |
 
-The 5 target identities (7, 797, 2619, 4428, 7007) show a wide spread: celebrities 7 and 2619 achieve near-perfect AP (0.995), while 4428 (0.103) is less reliable — consistent with the smaller number of labelled boxes for that identity in the training set.
+**Reading the table.** AP is binary-ish (≈ 1.0 or low) because each class has only one or two
+instances in the test split: a single well-localised detection gives AP ≈ 1.0, while a weak or
+missed one gives AP ≈ 0. This is a small-N artifact, not a metric defect. The four target
+identities present in this split (797, 2619, 4428, 7007) span the full range (0.07–0.99).
 
 ## Detection Error Categories
 
@@ -99,14 +126,29 @@ Note: A *true negative* (TN) is not meaningful in object detection because the n
 ![](runs/detect/celebrity_detection/yolov8n_finetune/results.png)
 
 - **Top row:** Training losses (box, cls, DFL) — all trending downward over 100 epochs.
-- **Bottom row:** Validation losses — box loss drops from ~0.40 to ~0.13, cls loss from ~3.6 to ~2.4.
-- The steady decline in val box loss through epoch 100 shows the model is still learning — it has not plateaued, suggesting further training could yield additional gains.
+- **Bottom row:** Validation losses — by epoch 100 the val box loss is ≈ 0.13 and the cls loss ≈ 2.4.
+- The continued (gentle) decline in val box loss through epoch 100 shows the model is still improving; on this small set, further training yields only marginal gains.
 
 ## Interpretation
 
-The model achieves **mAP@0.5 = 51.3 %** and **mAP@0.5:0.95 = 50.8 %** after 100 epochs on 14 training images. The learning curve shows three distinct phases: (1) epochs 1–20 where the model learns to detect face regions (recall jumps to 100 %), (2) epochs 20–70 where box localisation improves steadily (mAP rises from 0.18 to 0.45), and (3) epochs 70–100 where the classification head begins to discriminate between celebrity identities (precision rises from 4 % to 59 %, then settles at ~36 % as recall is traded for precision).
+On the held-out **test split**, the committed `best.pt` checkpoint reaches **mAP@0.5 = 0.624**
+(equivalently mAP@0.5:0.95 = 0.624 on this grid) with mean per-class precision **0.472** and
+recall **0.625** over the 12 classes present. On the **validation split** the same model scores
+mAP@0.5 = 0.470. The two splits disagree because each holds only 3–4 images and a *different*
+set of celebrity instances, so per-class AP is driven by individual detections rather than by a
+stable distribution — a small-N artifact, not leakage.
 
-The final **precision of 35.8 %** and **recall of 71.2 %** indicate the model reliably finds most true faces while keeping false positives manageable. Confidence scores are now well-calibrated: at `conf=0.25` the model returns 4 high-confidence detections per image, and at `conf=0.1` it returns 9–12 detections — close to the 9 ground-truth faces per grid. The 5 target celebrity IDs (7, 797, 2619, 4428, 7007) are correctly identified in every test image, with celebrity 797 achieving the highest confidence (up to 0.98). The remaining gap to perfect detection is primarily due to the small dataset size (126 total labelled face-boxes across 13 classes) — expanding to 100+ grid images would provide the most significant improvement.
+The validation learning curve (`results.csv`) shows three phases: (1) epochs 1–20 — the model
+learns to find face regions (recall reaches 1.0); (2) epochs 20–70 — box localisation and
+confidence improve (val mAP@0.5 rises from ≈ 0.23 to ≈ 0.36); and (3) epochs 70–100 — the
+classification head sharpens, lifting val mAP@0.5 to ≈ 0.47 as detections become more selective
+(precision rises to ≈ 0.42 then settles at ≈ 0.36).
+
+The dominant limitation is **dataset size** — **126 training boxes** across 13 classes — which
+makes per-class estimates high-variance (a single missed face flips a class recall between 0 and
+1). Expanding the grid set to 100+ images is the highest-leverage improvement. For the live demo
+the pipeline runs at `conf=0.1` to favour recall on unseen images, and any face the classifier is
+not confident about falls back to the detector's label.
 
 ## Model Checkpoint
 

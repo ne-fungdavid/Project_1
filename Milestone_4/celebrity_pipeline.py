@@ -17,12 +17,21 @@ import sys
 import cv2
 import numpy as np
 
+# Must be a module-level import: the saved .keras model embeds a Lambda(preprocess_input)
+# layer whose free variable Keras resolves from this module's globals at load time.
+from tensorflow.keras.applications.resnet50 import preprocess_input  # noqa: F401
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 
 CLASSIFIER_PATH = os.path.join(SCRIPT_DIR, "models", "resnet50_classifier.keras")
 CLASS_NAMES_5 = ['7', '797', '2619', '4428', '7007']
 TARGET_IDS = {"7", "797", "2619", "4428", "7007"}
+
+# Standard operating point: a low detection confidence so faces are not missed (important for
+# unseen images in the live demo). Raise --conf (e.g. 0.25) to be more conservative.
+DEFAULT_DET_CONF = 0.1
+DEFAULT_ID_THRESH = 0.5
 
 
 def find_yolo_weights():
@@ -40,7 +49,7 @@ def find_yolo_weights():
 class CelebrityPipeline:
     """Integrated detection + identification pipeline."""
 
-    def __init__(self, conf=0.25, imgsz=640):
+    def __init__(self, conf=DEFAULT_DET_CONF, imgsz=640, id_thresh=DEFAULT_ID_THRESH):
         from ultralytics import YOLO
         from tensorflow.keras.models import load_model
 
@@ -57,38 +66,13 @@ class CelebrityPipeline:
         self.yolo_names = self.detector.names
 
         print(f"Loading ResNet50: {CLASSIFIER_PATH}")
-        from tensorflow.keras.applications import ResNet50 as RN50
-        from tensorflow.keras.applications.resnet50 import preprocess_input
-        from tensorflow.keras.models import Sequential
-        from tensorflow.keras.layers import (Input, GlobalAveragePooling2D,
-                                             Dense, Dropout, Lambda)
-        from tensorflow.keras import regularizers as reg
-
-        NUM_CLS = 5
-        l2 = reg.l2(1e-3)
-        base = RN50(weights=None, include_top=False, input_shape=(224, 224, 3))
-        for layer in base.layers:
-            if not layer.name.startswith('conv5_block3'):
-                layer.trainable = False
-
-        self.classifier = Sequential([
-            Input(shape=(224, 224, 3)),
-            Lambda(lambda x: preprocess_input(x)),
-            base,
-            GlobalAveragePooling2D(),
-            Dense(256, activation='relu', kernel_regularizer=l2),
-            Dropout(0.30),
-            Dense(NUM_CLS, activation='softmax')
-        ])
-        # Load weights (skip augmentation layers — they have no weights)
-        weights_path = os.path.join(SCRIPT_DIR, "models", "resnet50_weights.h5")
-        if os.path.exists(weights_path):
-            self.classifier.load_weights(weights_path, by_name=True)
-        else:
-            self.classifier.load_weights(CLASSIFIER_PATH, by_name=True)
+        # Load the saved model directly (identical to train_classifier.py output).
+        # safe_mode=False is required for the embedded preprocess_input Lambda layer.
+        self.classifier = load_model(CLASSIFIER_PATH, compile=False, safe_mode=False)
 
         self.conf = conf
         self.imgsz = imgsz
+        self.id_thresh = id_thresh
         self.target_indices = {
             i for i, n in self.yolo_names.items() if n in TARGET_IDS
         }
@@ -128,7 +112,7 @@ class CelebrityPipeline:
             probs = self.classifier.predict(crop_arr, verbose=0)[0]
             top_idx = int(np.argmax(probs))
             top_prob = float(probs[top_idx])
-            if top_prob > 0.5:
+            if top_prob >= self.id_thresh:
                 det.update(identity=CLASS_NAMES_5[top_idx],
                            confidence=top_prob, source="classifier")
             else:
@@ -138,21 +122,20 @@ class CelebrityPipeline:
         return detections, img
 
     def annotate(self, img, detections):
+        """Draw boxes. Green = classifier-identified, orange = detector fallback."""
         annotated = img.copy()
         for det in detections:
             x1, y1, x2, y2 = det["bbox"]
-            color = (0, 200, 0) if det["is_target"] else (255, 160, 0)
+            color = (0, 200, 0) if det["source"] == "classifier" else (255, 140, 0)
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
             label = f"{det['identity']} ({det['confidence']:.2f})"
-            if det["is_target"]:
-                # Classifier (green): label above the box
-                cv2.putText(annotated, label, (x1, max(y1 - 6, 14)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
-            else:
-                # Detector (orange): label inside box, bottom-left
-                (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
-                cv2.putText(annotated, label, (x1 + 3, y2 - 4),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+            # Label above the box on a filled background for readability.
+            ly = max(y1 - th - 8, 0)
+            cv2.rectangle(annotated, (x1, ly), (x1 + tw, ly + th + 6), color, -1)
+            text_color = (255, 255, 255) if det["source"] == "classifier" else (0, 0, 0)
+            cv2.putText(annotated, label, (x1, ly + th),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, text_color, 1, cv2.LINE_AA)
         return annotated
 
 
@@ -161,15 +144,19 @@ def main():
         description="Celebrity Detection & Identification Pipeline (Milestone 4)")
     parser.add_argument("--image", type=str, default=None,
                         help="Path to a single image")
-    parser.add_argument("--conf", type=float, default=0.25,
-                        help="YOLO confidence threshold (default 0.25)")
+    parser.add_argument("--conf", type=float, default=DEFAULT_DET_CONF,
+                        help=f"YOLO detection confidence threshold (default {DEFAULT_DET_CONF})")
+    parser.add_argument("--id-thresh", type=float, default=DEFAULT_ID_THRESH,
+                        help=f"Min classifier probability to accept an identity "
+                             f"(default {DEFAULT_ID_THRESH})")
     parser.add_argument("--imgsz", type=int, default=640,
                         help="Inference image size (default 640)")
     parser.add_argument("--save", action="store_true",
                         help="Save annotated images to pipeline_output/")
     args = parser.parse_args()
 
-    pipeline = CelebrityPipeline(conf=args.conf, imgsz=args.imgsz)
+    pipeline = CelebrityPipeline(conf=args.conf, imgsz=args.imgsz,
+                                 id_thresh=args.id_thresh)
 
     if args.image:
         if not os.path.exists(args.image):
@@ -191,6 +178,8 @@ def main():
     if args.save:
         os.makedirs(out_dir, exist_ok=True)
 
+    # Single inference pass: compute once, then print / save / display.
+    annotated_list = []
     for img_path in images:
         name = os.path.basename(img_path)
         detections, img = pipeline.detect_and_identify(img_path)
@@ -204,8 +193,10 @@ def main():
             src = "cls" if d["source"] == "classifier" else "det"
             print(f"    {d['identity']:>6s}  conf={d['confidence']:.4f}  [{src}]{star}")
 
+        annotated = pipeline.annotate(img, detections)
+        annotated_list.append((name, annotated))
+
         if args.save:
-            annotated = pipeline.annotate(img, detections)
             out_path = os.path.join(out_dir, name)
             cv2.imwrite(out_path, annotated)
             print(f"    Saved: {out_path}")
@@ -213,16 +204,13 @@ def main():
     if not args.save:
         try:
             import matplotlib.pyplot as plt
-            n = len(images)
+            n = len(annotated_list)
             fig, axes = plt.subplots(1, n, figsize=(7 * n, 7))
             if n == 1:
                 axes = [axes]
-            for idx, img_path in enumerate(images):
-                detections, img = pipeline.detect_and_identify(img_path)
-                annotated = cv2.cvtColor(
-                    pipeline.annotate(img, detections), cv2.COLOR_BGR2RGB)
-                axes[idx].imshow(annotated)
-                axes[idx].set_title(os.path.basename(img_path), fontsize=10)
+            for idx, (name, annotated) in enumerate(annotated_list):
+                axes[idx].imshow(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB))
+                axes[idx].set_title(name, fontsize=10)
                 axes[idx].axis("off")
             plt.tight_layout()
             plt.show()
