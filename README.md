@@ -145,19 +145,7 @@ Each face crop is augmented *before* being pasted into its grid cell: random hor
 
 ### 4. Fine-tune & evaluate — Milestone 3
 
-The full pipeline is in `Milestone_3/DavidFung_Project1.Milestone3.ipynb`. Run cells top-to-bottom:
-
-| Task | What it does |
-|:----:|:------------|
-| 1 | Set up paths, verify data.yaml and image/label counts |
-| 2 | Fine-tune YOLOv8n on the grid dataset (100 epochs, SGD, lr0=0.005, lrf=0.01) |
-| 3 | Display training & validation loss curves from `results.csv` |
-| 4 | Per-class mAP@0.5 bar chart (target vs non-target) |
-| 5 | Test-set metrics (mAP@0.5, mAP@0.5:0.95, precision, recall) + per-class table |
-| 6 | Save & summarise the best checkpoint |
-| 7 | Hyperparameter sweep: lr0 × imgsz (5 configs, 20 epochs, SGD) |
-| 8 | 4-colour detection gallery (Green=TP, Orange=Misclassified, Red=FP, Blue=FN) |
-| 8b | Per-target-class TP / Misclassified / FN summary on the test set |
+The full pipeline is in `Milestone_3/DavidFung_Project1.Milestone3.ipynb`. Run cells top-to-bottom.
 
 **Key hyperparameters** (selected via sweep): `lr0=0.005`, `lrf=0.01`, `imgsz=640`, `batch=16`, `epochs=100`.
 
@@ -214,21 +202,6 @@ python generate_gallery.py
 | `Milestone_4/gallery/` | Final results (25 correct + 8 errors + 11 detection) |
 | `Milestone_4/pipeline_output/` | Annotated pipeline outputs |
 | `requirements.txt` | Full dependency list |
-
-## Final Deliverables & Submission
-
-| Deliverable | Location |
-|:------------|:---------|
-| **Final report** (6–8 pp; export to PDF for Canvas) | `Milestone_4/final_report.md` |
-| **GitHub repository** at a tagged commit / specific hash | this repo |
-| **Final results gallery** (≥20 correct, ≥5 misclassified + analysis, ≥10 multi-face) | `Milestone_4/gallery/` |
-| **Trained checkpoints / retrain scripts** | `Milestone_3/runs/.../best.pt` (committed), `train_classifier.py` (classifier) |
-| **README** with setup, layout, reproduction commands | `README.md` (this file) |
-| **Environment spec** | `requirements.txt` |
-| **Presentation & live demo** (10–15 min, Zoom) | scheduled slot — run `celebrity_pipeline.py --image <unseen.jpg>` |
-
-**Ethical considerations** are covered in `Milestone_4/final_report.md` (Section 6, ≈ 1 page):
-facial-recognition bias, privacy/consent, and misuse risk, with concrete mitigations.
 
 ## Notes
 
