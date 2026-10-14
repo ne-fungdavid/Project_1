@@ -53,9 +53,11 @@ def main():
     correct_dir = os.path.join(GALLERY_DIR, "classification_correct")
     error_dir = os.path.join(GALLERY_DIR, "classification_errors")
     det_dir = os.path.join(GALLERY_DIR, "detection")
-    os.makedirs(correct_dir, exist_ok=True)
-    os.makedirs(error_dir, exist_ok=True)
-    os.makedirs(det_dir, exist_ok=True)
+    # Start from a clean slate so re-runs never accumulate stale examples
+    for d in (correct_dir, error_dir, det_dir):
+        if os.path.isdir(d):
+            shutil.rmtree(d)
+        os.makedirs(d, exist_ok=True)
 
     # Load model
     print("Loading classifier...")

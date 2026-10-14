@@ -2,8 +2,11 @@
 """
 Milestone 4 - Retrain and Save the ResNet50 Classifier
 ========================================================
-Extracts the ResNet50 fine-tuning model from the Milestone 1 notebook
-and saves it as a .keras file for use in the integrated pipeline.
+Faithfully reproduces the Milestone 1 two-stage ResNet50 training:
+  Stage 1 (feature extraction): frozen ResNet50 + trained classification head.
+  Stage 2 (fine-tuning): conv5_block3 unfrozen, warm-started from the best
+          feature-extraction weights, then fine-tuned.
+The fine-tuned model is saved as a .keras file for the integrated pipeline.
 
 Run from anywhere:
     python train_classifier.py
@@ -43,6 +46,7 @@ DATA_DIR = os.path.join(PROJECT_ROOT, "data", "selected_images")
 SAVE_PATH = os.path.join(SCRIPT_DIR, "models", "resnet50_classifier.keras")
 
 l2_reg = regularizers.l2(1e-3)
+LR_FE = 1e-3
 LR_FT = 1e-4
 FT_UNFREEZE_PREFIXES = ('conv5_block3',)
 
@@ -92,22 +96,49 @@ def load_image_arrays(files, labels):
     return x, y
 
 
-def build_model():
-    """ResNet50 fine-tuning model (same architecture as M1 Task 4)."""
-    set_all_seeds()
-    base = ResNet50(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
-    for layer in base.layers:
-        if not any(layer.name.startswith(p) for p in FT_UNFREEZE_PREFIXES):
-            layer.trainable = False
-
-    model = Sequential([
-        Input(shape=(224, 224, 3)),
+def _augmentation_layers():
+    return [
         layers.RandomFlip("horizontal"),
         layers.RandomRotation(0.1),
         layers.RandomZoom(0.1),
         layers.RandomBrightness(0.2, value_range=(0, 255)),
         layers.RandomContrast(0.2),
         layers.RandomTranslation(0.1, 0.1),
+    ]
+
+
+def build_model_fe():
+    """ResNet50 feature-extraction model (frozen base) — M1 Task 3."""
+    set_all_seeds()
+    base = ResNet50(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
+    base.trainable = False
+    model = Sequential([
+        Input(shape=(224, 224, 3)),
+        *_augmentation_layers(),
+        Lambda(lambda x: preprocess_input(x)),
+        base,
+        GlobalAveragePooling2D(),
+        Dense(256, activation='relu', kernel_regularizer=l2_reg),
+        Dropout(0.50),
+        Dense(NUM_CLASSES, activation='softmax')
+    ])
+    model.compile(optimizer=keras.optimizers.Adam(learning_rate=LR_FE),
+                  loss='categorical_crossentropy', metrics=['accuracy'])
+    n = sum(w.shape.num_elements() for w in model.trainable_weights)
+    print(f"ResNet50 (FE) — trainable params: {n:,}")
+    return model
+
+
+def build_model_ft():
+    """ResNet50 fine-tuning model (conv5_block3 unfrozen) — M1 Task 4."""
+    set_all_seeds()
+    base = ResNet50(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
+    for layer in base.layers:
+        if not any(layer.name.startswith(p) for p in FT_UNFREEZE_PREFIXES):
+            layer.trainable = False
+    model = Sequential([
+        Input(shape=(224, 224, 3)),
+        *_augmentation_layers(),
         Lambda(lambda x: preprocess_input(x)),
         base,
         GlobalAveragePooling2D(),
@@ -115,19 +146,16 @@ def build_model():
         Dropout(0.30),
         Dense(NUM_CLASSES, activation='softmax')
     ])
-    model.compile(
-        optimizer=keras.optimizers.Adam(learning_rate=LR_FT),
-        loss='categorical_crossentropy',
-        metrics=['accuracy']
-    )
-    trainable = sum(w.shape.num_elements() for w in model.trainable_weights)
-    print(f"Trainable params: {trainable:,}")
+    model.compile(optimizer=keras.optimizers.Adam(learning_rate=LR_FT),
+                  loss='categorical_crossentropy', metrics=['accuracy'])
+    n = sum(w.shape.num_elements() for w in model.trainable_weights)
+    print(f"ResNet50 (FT) — trainable params: {n:,}")
     return model
 
 
 def main():
     print("=" * 60)
-    print("ResNet50 Classifier - Retrain & Save")
+    print("ResNet50 Classifier - Retrain & Save (two-stage, M1-faithful)")
     print("=" * 60)
 
     (train_files, train_labels, val_files, val_labels,
@@ -138,29 +166,45 @@ def main():
     X_test, y_test = load_image_arrays(test_files, test_labels)
     print(f"X_train: {X_train.shape}, X_test: {X_test.shape}")
 
-    model = build_model()
-
     os.makedirs(os.path.dirname(SAVE_PATH), exist_ok=True)
     ckpt_dir = os.path.join(tempfile.gettempdir(), 'm4_classifier_ckpt')
     os.makedirs(ckpt_dir, exist_ok=True)
-    best_ckpt = os.path.join(ckpt_dir, 'best.weights.h5')
+    fe_best = os.path.join(ckpt_dir, 'best_fe.weights.h5')
+    ft_best = os.path.join(ckpt_dir, 'best_ft.weights.h5')
 
-    best_cb = ModelCheckpoint(best_ckpt, monitor='val_accuracy', mode='max',
-                              save_best_only=True, save_weights_only=True, verbose=0)
-    lr_cb = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, min_lr=1e-6, verbose=0)
+    def lr_cb():
+        return ReduceLROnPlateau(monitor='val_loss', factor=0.5,
+                                 patience=3, min_lr=1e-6, verbose=0)
 
-    print(f"\nTraining for {EPOCHS} epochs...")
-    t0 = time.time()
-    model.fit(X_train, y_train, epochs=EPOCHS, batch_size=BATCH,
-              validation_data=(X_val, y_val), callbacks=[best_cb, lr_cb], verbose=1)
-    train_time = time.time() - t0
+    total_t0 = time.time()
 
-    model.load_weights(best_ckpt)
-    test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
-    print(f"\nTest Accuracy: {test_acc:.4f}")
-    print(f"Training Time: {train_time:.1f}s")
+    # ---- Stage 1: feature extraction (frozen base) ----
+    print("\n[Stage 1/2] ResNet50 feature extraction (frozen base) ...")
+    model_fe = build_model_fe()
+    best_fe_cb = ModelCheckpoint(fe_best, monitor='val_accuracy', mode='max',
+                                 save_best_only=True, save_weights_only=True, verbose=0)
+    model_fe.fit(X_train, y_train, epochs=EPOCHS, batch_size=BATCH,
+                 validation_data=(X_val, y_val), callbacks=[best_fe_cb, lr_cb()], verbose=1)
+    model_fe.load_weights(fe_best)
+    _, fe_acc = model_fe.evaluate(X_test, y_test, verbose=0)
+    print(f"[Stage 1/2] FE best test accuracy: {fe_acc:.4f}")
 
-    model.save(SAVE_PATH)
+    # ---- Stage 2: fine-tuning (conv5_block3 unfrozen), warm-started from FE best ----
+    print("\n[Stage 2/2] ResNet50 fine-tuning (warm-start from FE best) ...")
+    model_ft = build_model_ft()
+    model_ft.load_weights(fe_best)
+    print(f"Warm-started fine-tuning model from {os.path.basename(fe_best)}")
+    best_ft_cb = ModelCheckpoint(ft_best, monitor='val_accuracy', mode='max',
+                                 save_best_only=True, save_weights_only=True, verbose=0)
+    model_ft.fit(X_train, y_train, epochs=EPOCHS, batch_size=BATCH,
+                 validation_data=(X_val, y_val), callbacks=[best_ft_cb, lr_cb()], verbose=1)
+    model_ft.load_weights(ft_best)
+    _, ft_acc = model_ft.evaluate(X_test, y_test, verbose=0)
+    print(f"[Stage 2/2] FT best test accuracy: {ft_acc:.4f}")
+
+    print(f"\nTotal Training Time: {time.time() - total_t0:.1f}s")
+
+    model_ft.save(SAVE_PATH)
     size_mb = os.path.getsize(SAVE_PATH) / 1e6
     print(f"\nModel saved to: {SAVE_PATH} ({size_mb:.1f} MB)")
 
