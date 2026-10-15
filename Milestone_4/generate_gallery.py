@@ -4,7 +4,7 @@ Milestone 4 - Generate Final Results Gallery
 =============================================
 Creates:
   - >=20 correctly classified single-face examples
-  - >=5 misclassified single-face examples with analysis
+  - >=5 misclassified single-face examples
   - >=10 multi-face detection examples (reuses M3 gallery)
 
 Run from anywhere:
@@ -137,16 +137,10 @@ def main():
         for i, e in enumerate(correct[:25]):
             f.write(f"{i+1}. **{e['true']}** (conf={e['prob']:.3f}) - {os.path.basename(e['file'])}\n")
 
-        f.write("\n### Misclassified (with analysis)\n\n")
+        f.write("\n### Misclassified\n\n")
         for i, e in enumerate(errors[:10]):
             f.write(f"{i+1}. True: **{e['true']}**  Predicted: **{e['pred']}**  "
                      f"(confidence={e['prob']:.3f})  — `{os.path.basename(e['file'])}`\n")
-            f.write(f"   Analysis: A cross-identity confusion between two rostered celebrities. "
-                     f"The softmax assigned the highest (but not decisive) probability to "
-                     f"`{e['pred']}` instead of the true identity `{e['true']}`. This indicates the "
-                     f"two faces share salient features and the model lacked enough separating "
-                     f"signal for this specific pair — the usual remedy is more images and harder "
-                     f"negatives for both identities, or a similarity/verification stage on top.\n")
 
         f.write("\n## Multi-Face Detection (YOLOv8)\n\n")
         f.write("Reused from Milestone 3 gallery (11 annotated grid images).\n\n")

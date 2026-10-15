@@ -21,6 +21,11 @@ GALLERY_DIR = os.path.join(SCRIPT_DIR, "gallery")
 
 
 def find_weights():
+    """Prefer the canonical finetune run (matches the notebook); fall back to any non-sweep best.pt."""
+    canon = os.path.join(SCRIPT_DIR, "runs", "detect", "celebrity_detection",
+                         "yolov8n_finetune", "weights", "best.pt")
+    if os.path.exists(canon):
+        return canon
     search_dir = os.path.join(SCRIPT_DIR, "runs", "detect")
     for root, _dirs, files in os.walk(search_dir):
         if "best.pt" in files and "sweep" not in root.lower():
@@ -85,7 +90,7 @@ def annotate_with_errors(img, gt_boxes, dets, class_names):
                 best_iou = iou
                 best_gt_idx = j
 
-        if best_iou >= 0.5 and best_gt_idx >= 0:
+        if best_iou > 0.5 and best_gt_idx >= 0:
             gt = gt_boxes[best_gt_idx]
             if det["class"] == gt["class"]:
                 color = (0, 200, 0)      # Green = TP
@@ -159,7 +164,7 @@ def main():
     print(f"Color legend: Green=TP  Orange=Misclassified  Red=FP  Blue=FN")
     os.makedirs(GALLERY_DIR, exist_ok=True)
 
-    captions = []
+    records = []
     for split, img_name in selected:
         img_path = os.path.join(splits[split], img_name)
         lbl_path = os.path.join(lbl_splits[split], img_name.rsplit(".", 1)[0] + ".txt")
@@ -180,37 +185,36 @@ def main():
         out_name = f"{split}_{img_name}"
         cv2.imwrite(os.path.join(GALLERY_DIR, out_name), annotated)
 
-        # Caption
+        # Record a clean entry (counts + ground-truth only; no failure analysis)
         n_gt_target = sum(1 for g in gt_boxes if g["class"] in target_indices)
-        parts = []
-        if counts["TP"] > 0:
-            parts.append(f"{counts['TP']} TP")
-        if counts["Misclassified"] > 0:
-            parts.append(f"{counts['Misclassified']} Misclassified")
-        if counts["FP"] > 0:
-            parts.append(f"{counts['FP']} FP")
-        if counts["FN"] > 0:
-            parts.append(f"{counts['FN']} FN (missed)")
-        caption = (f"{split}/{img_name} | "
-                   f"{"  ".join(parts) if parts else "no detections"} | "
-                   f"GT: {len(gt_boxes)} faces ({n_gt_target} target)")
-        captions.append(caption)
+        records.append({
+            "file": f"{split}/{img_name}",
+            "img": out_name,
+            "TP": counts["TP"],
+            "Misclassified": counts["Misclassified"],
+            "FP": counts["FP"],
+            "FN": counts["FN"],
+            "gt": len(gt_boxes),
+            "gt_target": n_gt_target,
+        })
         print(f"  {out_name}: {counts['TP']} TP, {counts['Misclassified']} Mis, "
               f"{counts['FP']} FP, {counts['FN']} FN")
 
-    # Write captions
+    # Write captions (clean per-image entries; no failure analysis)
     cap_path = os.path.join(GALLERY_DIR, "captions.md")
     with open(cap_path, "w") as f:
         f.write("# Detection Visualization Gallery\n\n")
-        f.write("**Color legend:**  \\n")
-        f.write("- **Green** = TP (correct class, IoU >= 0.5)  \\n")
-        f.write("- **Orange** = Misclassified (IoU >= 0.5, wrong class)  \\n")
-        f.write("- **Red** = FP (no GT match, IoU < 0.5)  \\n")
+        f.write("**Color legend:**  \n")
+        f.write("- **Green** = TP (correct class, IoU > 0.5)  \n")
+        f.write("- **Orange** = Misclassified (IoU > 0.5, wrong class)  \n")
+        f.write("- **Red** = FP (no GT match, IoU < 0.5)  \n")
         f.write("- **Blue** = FN (missed GT box)\n\n")
-        for i, cap in enumerate(captions):
-            fname = cap.split(" | " )[0]
-            f.write(f"### {i+1}. {fname}\n")
-            f.write(f"{cap.split('|', 2)[-1].strip()}\n\n")
+        for i, r in enumerate(records):
+            f.write(f"### {i+1}. {r['file']}\n\n")
+            f.write(f"- **Image:** `{r['img']}`  \n")
+            f.write(f"- **Prediction:** {r['TP']} TP, {r['Misclassified']} misclassified, "
+                    f"{r['FP']} FP, {r['FN']} FN (missed)  \n")
+            f.write(f"- **Ground truth:** {r['gt']} faces ({r['gt_target']} target)\n\n")
     print(f"\nSaved {len(selected)} images + captions to {GALLERY_DIR}")
 
 

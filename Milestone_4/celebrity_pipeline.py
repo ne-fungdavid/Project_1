@@ -35,6 +35,11 @@ DEFAULT_ID_THRESH = 0.5
 
 
 def find_yolo_weights():
+    """Prefer the canonical M3 finetune run; fall back to any non-sweep best.pt."""
+    canon = os.path.join(PROJECT_ROOT, "Milestone_3", "runs", "detect",
+                         "celebrity_detection", "yolov8n_finetune", "weights", "best.pt")
+    if os.path.exists(canon):
+        return canon
     search_dir = os.path.join(PROJECT_ROOT, "Milestone_3", "runs", "detect")
     candidates = []
     for root, _dirs, files in os.walk(search_dir):
@@ -122,20 +127,26 @@ class CelebrityPipeline:
         return detections, img
 
     def annotate(self, img, detections):
-        """Draw boxes. Green = classifier-identified, orange = detector fallback."""
+        """Draw boxes. Green=classifier (label above box); Orange=detector (label inside, bottom-left).
+
+        Mirrors the Milestone 4 notebook's visualize_result().
+        """
         annotated = img.copy()
         for det in detections:
             x1, y1, x2, y2 = det["bbox"]
             color = (0, 200, 0) if det["source"] == "classifier" else (255, 140, 0)
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
-            label = f"{det['identity']} ({det['confidence']:.2f})"
-            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
-            # Label above the box on a filled background for readability.
-            ly = max(y1 - th - 8, 0)
-            cv2.rectangle(annotated, (x1, ly), (x1 + tw, ly + th + 6), color, -1)
-            text_color = (255, 255, 255) if det["source"] == "classifier" else (0, 0, 0)
-            cv2.putText(annotated, label, (x1, ly + th),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, text_color, 1, cv2.LINE_AA)
+            text = f"{det['identity']} ({det['confidence']:.2f})"
+            if det["source"] == "classifier":
+                # Green: label above the box
+                (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+                cv2.rectangle(annotated, (x1, max(y1 - th - 6, 0)), (x1 + tw, y1), color, -1)
+                cv2.putText(annotated, text, (x1, max(y1 - 4, 12)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            else:
+                # Orange: label inside the box, bottom-left
+                cv2.putText(annotated, text, (x1 + 3, y2 - 4),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
         return annotated
 
 
