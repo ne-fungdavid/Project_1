@@ -18,10 +18,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from collections import defaultdict
 
-# The saved .keras model embeds a Lambda(preprocess_input) layer. Keras 3 deserializes
-# lambda functions using the globals of keras.src.utils.python_utils, so we inject
-# preprocess_input there before loading to make the layer callable.
-from tensorflow.keras.applications.resnet50 import preprocess_input  # noqa: F401
+from tensorflow.keras.applications.resnet50 import preprocess_input 
 from keras.src.utils import python_utils
 python_utils.preprocess_input = preprocess_input
 

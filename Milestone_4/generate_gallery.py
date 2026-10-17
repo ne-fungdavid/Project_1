@@ -17,7 +17,11 @@ import time
 import numpy as np
 from sklearn.model_selection import train_test_split
 from collections import defaultdict
+
 from tensorflow.keras.applications.resnet50 import preprocess_input
+from keras.src.utils import python_utils
+python_utils.preprocess_input = preprocess_input
+
 from tensorflow.keras.models import load_model
 from tensorflow.keras.utils import load_img, img_to_array
 

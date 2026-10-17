@@ -17,9 +17,9 @@ import sys
 import cv2
 import numpy as np
 
-# Must be a module-level import: the saved .keras model embeds a Lambda(preprocess_input)
-# layer whose free variable Keras resolves from this module's globals at load time.
-from tensorflow.keras.applications.resnet50 import preprocess_input  # noqa: F401
+from tensorflow.keras.applications.resnet50 import preprocess_input  
+from keras.src.utils import python_utils
+python_utils.preprocess_input = preprocess_input
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
