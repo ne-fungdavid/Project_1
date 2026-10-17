@@ -1,52 +1,75 @@
-# Final Results Gallery (Milestone 4)
+# Final Results Gallery (Milestone 4 - Baseline 5-class Model)
 
-## Single-Face Classification (ResNet50)
+**Source:** Only the 3 synthetic test images (data/synthetic_grid/images/test/)
 
-**Correct:** 25 examples  **Errors:** 10 examples
+**Color legend:**  
+- **Green** = Correct (detected + classified correctly)  
+- **Orange** = Misclassified (detected, IoU > 0.5, wrong class)  
+- **Red** = False Positive (no GT match, IoU < 0.5)  
+- **Blue/Orange border** = False Negative (missed GT)
 
-### Correctly Classified
+## grid_0000.jpg
 
-1. **7** (conf=0.837) - 002065.jpg
-2. **7** (conf=0.715) - 003099.jpg
-3. **7** (conf=0.995) - 007335.jpg
-4. **7** (conf=0.946) - 009932.jpg
-5. **7** (conf=0.976) - 011904.jpg
-6. **7** (conf=0.994) - 017587.jpg
-7. **7** (conf=0.966) - 019811.jpg
-8. **7** (conf=0.994) - 020284.jpg
-9. **7** (conf=0.991) - 022384.jpg
-10. **7** (conf=0.808) - 036895.jpg
-11. **7** (conf=0.965) - 038132.jpg
-12. **7** (conf=0.955) - 045626.jpg
-13. **7** (conf=0.998) - 063094.jpg
-14. **7** (conf=0.922) - 090356.jpg
-15. **7** (conf=0.988) - 090940.jpg
-16. **7** (conf=0.999) - 091155.jpg
-17. **7** (conf=0.989) - 095162.jpg
-18. **7** (conf=0.989) - 115977.jpg
-19. **7** (conf=0.911) - 121574.jpg
-20. **7** (conf=0.907) - 130335.jpg
-21. **7** (conf=0.969) - 140464.jpg
-22. **7** (conf=0.990) - 157436.jpg
-23. **7** (conf=0.872) - 157832.jpg
-24. **797** (conf=0.929) - 162875.jpg
-25. **797** (conf=0.972) - 164872.jpg
+Image: `baseline_grid_0000.jpg`
 
-### Misclassified
+Detected: 7 faces | Correct: 1 | Incorrect: 6 | Missed (FN): 4 | GT total: 9
 
-1. True: **7**  Predicted: **2619**  (confidence=0.704)  — `131364.jpg`
-2. True: **797**  Predicted: **7007**  (confidence=0.679)  — `164035.jpg`
-3. True: **797**  Predicted: **7007**  (confidence=0.799)  — `167868.jpg`
-4. True: **797**  Predicted: **7007**  (confidence=0.479)  — `168369.jpg`
-5. True: **797**  Predicted: **7007**  (confidence=0.639)  — `169927.jpg`
-6. True: **797**  Predicted: **7007**  (confidence=0.901)  — `170752.jpg`
-7. True: **797**  Predicted: **7007**  (confidence=0.681)  — `172544.jpg`
-8. True: **7007**  Predicted: **4428**  (confidence=0.615)  — `010363.jpg`
-9. True: **7007**  Predicted: **7**  (confidence=0.448)  — `095414.jpg`
-10. True: **7007**  Predicted: **797**  (confidence=0.434)  — `128347.jpg`
+| # | Predicted | Confidence | Source | Ground Truth | Status |
+|---|-----------|------------|--------|--------------|--------|
+| 1 | 7007 | 0.5620 | classifier | 797 | INCORRECT |
+| 2 | 2970 | 0.4830 | detector | 2970 | CORRECT |
+| 3 | 2619 | 0.5726 | classifier | 8335 | INCORRECT |
+| 4 | 7 | 0.8591 | classifier | 1212 | INCORRECT |
+| 5 | 7007 | 0.5147 | classifier | 2970 | INCORRECT |
+| 6 | 2336 | 0.1180 | detector | 3 | INCORRECT |
+| 7 | 7 | 0.1134 | detector | 3 | INCORRECT |
 
-## Multi-Face Detection (YOLOv8)
+## grid_0005.jpg
 
-Reused from Milestone 3 gallery (11 annotated grid images).
+Image: `baseline_grid_0005.jpg`
 
-Total detection examples: 11
+Detected: 8 faces | Correct: 1 | Incorrect: 7 | Missed (FN): 3 | GT total: 9
+
+| # | Predicted | Confidence | Source | Ground Truth | Status |
+|---|-----------|------------|--------|--------------|--------|
+| 1 | 7007 | 0.9929 | classifier | 4422 | INCORRECT |
+| 2 | 7 | 0.7070 | classifier | 1212 | INCORRECT |
+| 3 | 7007 | 0.9671 | classifier | 10002 | INCORRECT |
+| 4 | 797 | 0.3206 | detector | 797 | CORRECT |
+| 5 | 2619 | 0.8609 | classifier | 8335 | INCORRECT |
+| 6 | 797 | 0.5024 | classifier | 3 | INCORRECT |
+| 7 | 7007 | 0.9938 | classifier | 4422 | INCORRECT |
+| 8 | 7 | 0.7711 | classifier | 1212 | INCORRECT |
+
+## grid_0017.jpg
+
+Image: `baseline_grid_0017.jpg`
+
+Detected: 10 faces | Correct: 2 | Incorrect: 8 | Missed (FN): 2 | GT total: 9
+
+| # | Predicted | Confidence | Source | Ground Truth | Status |
+|---|-----------|------------|--------|--------------|--------|
+| 1 | 797 | 0.6337 | classifier | 797 | CORRECT |
+| 2 | 7007 | 0.5847 | classifier | 2970 | INCORRECT |
+| 3 | 7007 | 0.7440 | classifier | 4422 | INCORRECT |
+| 4 | 7007 | 0.8104 | classifier | 10002 | INCORRECT |
+| 5 | 7007 | 0.7671 | classifier | 10002 | INCORRECT |
+| 6 | 7 | 0.9323 | classifier | 3 | INCORRECT |
+| 7 | 7007 | 0.7440 | classifier | 4422 | INCORRECT |
+| 8 | 7007 | 0.7091 | classifier | 4422 | INCORRECT |
+| 9 | 4428 | 0.8523 | classifier | 4428 | CORRECT |
+| 10 | 7 | 0.7788 | classifier | 1212 | INCORRECT |
+
+---
+
+## Summary
+
+| Metric | Value |
+|--------|-------|
+| Total faces detected | 25 |
+| Correctly classified | 4 |
+| Incorrectly classified | 21 |
+| Missed (FN) | 9 |
+| Accuracy | 16.0% |
+| Test images | 3 |
+| Total GT faces | 27 |
