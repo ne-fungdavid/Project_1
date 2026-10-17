@@ -13,6 +13,7 @@ Run from anywhere:
 
 import os
 import shutil
+import time
 import numpy as np
 from sklearn.model_selection import train_test_split
 from collections import defaultdict
@@ -53,11 +54,24 @@ def main():
     correct_dir = os.path.join(GALLERY_DIR, "classification_correct")
     error_dir = os.path.join(GALLERY_DIR, "classification_errors")
     det_dir = os.path.join(GALLERY_DIR, "detection")
-    # Start from a clean slate so re-runs never accumulate stale examples
+    # Start from a clean slate so re-runs never accumulate stale examples.
+    # Robust to a stray FILE at these paths and to Windows handle-lag (WinError 183).
     for d in (correct_dir, error_dir, det_dir):
         if os.path.isdir(d):
             shutil.rmtree(d)
-        os.makedirs(d, exist_ok=True)
+        elif os.path.exists(d):
+            os.remove(d)
+        last_err = None
+        for _ in range(10):
+            try:
+                os.makedirs(d, exist_ok=True)
+                last_err = None
+                break
+            except FileExistsError as e:
+                last_err = e
+                time.sleep(0.2)
+        if last_err:
+            raise last_err
 
     # Load model
     print("Loading classifier...")
