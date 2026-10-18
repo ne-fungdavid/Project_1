@@ -108,6 +108,30 @@ class CelebrityPipeline:
                 "is_target": cls_idx in self.target_indices,
             })
 
+        # Enlarge small detections only when the image has FEW faces (single-face
+        # portraits): YOLO is trained on small 3x3-grid faces and under-sizes a
+        # face that fills the frame. On a crowded grid (many boxes) we leave the
+        # boxes untouched so neighbours are not disturbed.
+        img_area = w * h
+        if len(detections) <= 3:
+            MIN_RATIO = 0.10 # Min size of bbox
+            TARGET_RATIO = 0.90 # Max size of bbox
+            for det in detections:
+                bx1, by1, bx2, by2 = det["bbox"]
+                bw = max(1, bx2 - bx1)
+                bh = max(1, by2 - by1)
+                if bw * bh > MIN_RATIO * img_area:
+                    scale = ((TARGET_RATIO * img_area) / (bw * bh))
+                    cx = (bx1 + bx2) / 2.0
+                    cy = (by1 + by2) / 2.0
+                    nbw = bw * scale
+                    nbh = bh * scale
+                    bx1 = max(0, int(cx - nbw / 2))
+                    by1 = max(0, int(cy - nbh / 2))
+                    bx2 = min(w, int(cx + nbw / 2))
+                    by2 = min(h, int(cy + nbh / 2))
+                    det["bbox"] = [bx1, by1, bx2, by2]
+
         for det in detections:
             x1, y1, x2, y2 = det["bbox"]
             crop = img[y1:y2, x1:x2]
