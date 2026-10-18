@@ -174,14 +174,19 @@ def main():
                 correct = False; color = (0, 0, 255)
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
             text = f"{pred_label} ({confidence:.2f})"
-            if source == "classifier":
-                (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-                cv2.rectangle(annotated, (x1, max(y1-th-6,0)), (x1+tw, y1), color, -1)
-                cv2.putText(annotated, text, (x1, max(y1-4,12)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
+            (tw, th), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            # Place label in a distinct corner by outcome to reduce overlap:
+            #   TP -> top-left, Misclassified -> top-right, FP -> bottom-left
+            if is_tp and pred_label == gt_label:
+                tx, ty = x1 + 2, y1 - 2
+            elif is_tp:
+                tx, ty = x2 - tw - 2, y1 - 2
             else:
-                cv2.putText(annotated, text, (x1+3, y2-4),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+                tx, ty = x1 + 2, y2 + 2
+            tx = max(0, min(tx, w - tw))
+            ty = max(th, min(ty, h))
+            cv2.rectangle(annotated, (tx, ty - th), (tx + tw, ty + baseline), color, -1)
+            cv2.putText(annotated, text, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
             image_faces.append({"det_label": det["class_name"], "pred_label": pred_label,
                                 "confidence": confidence, "source": source,
                                 "gt_label": gt_label, "iou": best_iou, "correct": correct})
@@ -189,8 +194,13 @@ def main():
             if not gt_matched[j]:
                 gx1, gy1, gx2, gy2 = gt["bbox"]
                 cv2.rectangle(annotated, (gx1, gy1), (gx2, gy2), (255,128,0), 2)
-                cv2.putText(annotated, f"FN: {gt['class_name']}", (gx1, gy1-4),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,128,0), 1)
+                fn_text = f"FN: {gt['class_name']}"
+                (tw2, th2), bl2 = cv2.getTextSize(fn_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+                # FN -> bottom-right corner of the missed GT box
+                fx = max(0, min(gx2 - tw2 - 2, w - tw2))
+                fy = max(th2, min(gy2 + 2, h))
+                cv2.rectangle(annotated, (fx, fy - th2), (fx + tw2, fy + bl2), (255,128,0), -1)
+                cv2.putText(annotated, fn_text, (fx, fy), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
         cv2.imwrite(os.path.join(GALLERY_DIR, f"baseline_{img_name}"), annotated)
         n_correct = sum(1 for f in image_faces if f["correct"])
         n_incorrect = sum(1 for f in image_faces if not f["correct"])
