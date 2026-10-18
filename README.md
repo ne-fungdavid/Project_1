@@ -11,9 +11,28 @@ A discriminative computer-vision pipeline for **celebrity identification and det
 | **1** | `Milestone_1/` | Select a diverse subset of celebrity identities from CelebA and build a single-face classification baseline. |
 | **2** | `Milestone_2/` | Construct a synthetic 3×3 grid detection dataset (9 distinct celebrity faces per image) with YOLO-format annotations and a train/val/test split. |
 | **3** | `Milestone_3/` | Fine-tune YOLOv8 on the synthetic dataset, visualise training, run a hyperparameter sweep, and evaluate on the held-out test split. |
-| **4** | `Milestone_4/` | Integrate classification + detection into one pipeline, curate the final results gallery, and write the final report (incl. ethical considerations). |
+| **4** | `Milestone_4/` | Integrate classification + detection into one pipeline, curate the final results gallery.. |
 
 The identity-selection rationale is also captured in `DavidFung_Project1_Selection.ipynb` and `Milestone_1/project_1_proposal.pdf`.
+
+## Environment Requirements
+
+### Core / shared
+numpy>=1.24
+opencv-python>=4.8
+matplotlib>=3.7
+pandas>=2.0
+scikit-learn>=1.3
+pillow>=10.0
+tqdm>=4.65
+
+### Milestone 1 & 4 - single-face classification (ResNet50)
+tensorflow>=2.13
+
+### Milestone 3 & 4 - multi-face detection (YOLOv8)
+ultralytics>=8.2
+torch>=2.0
+torchvision>=0.15
 
 ## Repository Structure
 
@@ -37,7 +56,7 @@ The identity-selection rationale is also captured in `DavidFung_Project1_Selecti
 │   ├── demo_output/                          # (generated) annotated test images
 │   └── runs/                                 # (generated) training runs, weights, plots
 ├── Milestone_4/
-│   ├── final_report.md                       # Final report (6–8 pp; export to PDF)
+│   ├── DavidFung_Project1.Milestone4.ipynb   # Integrated pipeline
 │   ├── celebrity_pipeline.py                 # Integrated detection + identification pipeline
 │   ├── train_classifier.py                   # Retrain & save ResNet50 classifier
 │   ├── generate_gallery.py                   # Final results gallery generator
@@ -81,17 +100,6 @@ Three datasets live under `data/`:
    - **70 / 15 / 15** split into `images/train`, `images/val`, `images/test` (**14 / 3 / 3** images), with matching `labels/` folders.
    - `data.yaml` declares **13 classes** (`nc: 13`) keyed by identity ID.
    - No source image file is ever reused across the dataset (global `used_paths` tracking).
-
-## Environment
-
-| Package | Version |
-|---------|---------|
-| Python | 3.10.21 |
-| PyTorch | 2.14.0+cu132 |
-| Ultralytics (YOLOv8) | 8.4.163 |
-| TensorFlow | 2.13.1 |
-
-A CUDA-capable GPU was used, the code also runs on CPU.
 
 ## How to Reproduce the Training Runs
 
@@ -168,28 +176,31 @@ python generate_gallery.py               # writes 11 annotated images to gallery
 
 ### 5. Integrate & Demo — Milestone 4
 
+Milestone 4 alaso includes a further refined ResNet50 model with more aggressive augmentation, more layers and also includes the full 13 class ID. This model has been saved with '_improved'to the file names,
+and Milestone 4 will make comparison and use of both models. 
+
 ```bash
 cd Milestone_4
 
 # Step 1: Train and save the classifier (if not already saved)
 python train_classifier.py
+python train_classifier_improved.py
 
 # Step 2: Run the integrated pipeline
 python celebrity_pipeline.py                          # run on all test images
 python celebrity_pipeline.py --image photo.jpg        # run on a specific image
 python celebrity_pipeline.py --image photo.jpg --save # save annotated output
 
+python celebrity_pipeline_improved.py                          # run on all test images
+python celebrity_pipeline_improved.py --image photo.jpg        # run on a specific image
+python celebrity_pipeline_improved.py --image photo.jpg --save # save annotated output
+
 # Step 3: Generate the final results gallery
 python generate_gallery.py
+python generate_gallery_improved.py
 ```
 
 **Pipeline:** Input Image → YOLOv8 (detect faces, 13-class) → ResNet50 (identify each face, 5-class) → Annotated output. Any face the identifier is not confident about falls back to the detector's label, so a box is always returned — important for the live demo on unseen images.
-
-> **Classifier checkpoint.** The 5-class ResNet50 is retrained with `python train_classifier.py`
-> (≈ 90 s) and saved to `Milestone_4/models/resnet50_classifier.keras`. That file is ~130 MB
-> (over GitHub's 100 MB file limit), so it is kept locally and **not** pushed; the retraining
-> script is committed, satisfying the "checkpoint **or** retraining script" requirement. The
-> YOLOv8n detector checkpoint (`best.pt`, ~6 MB) **is** committed under `Milestone_3/runs/...`.
 
 ### 6. Outputs
 
@@ -201,10 +212,8 @@ python generate_gallery.py
 | `Milestone_4/models/` | Saved ResNet50 classifier + weights |
 | `Milestone_4/gallery/` | Final results (25 correct + 8 errors + 11 detection) |
 | `Milestone_4/pipeline_output/` | Annotated pipeline outputs |
-| `requirements.txt` | Full dependency list |
 
 ## Notes
 
 - `yolov8n.pt` is downloaded automatically on the first run if it is not already present.
-- Set `EPOCHS` to a small value (8-10) to sanity-check the pipeline before a full 30 to 50-epoch run.
 - `data/` is committed in full so the pipeline reproduces without re-downloading the source CelebA images.
