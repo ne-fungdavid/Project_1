@@ -133,17 +133,7 @@ Run `Milestone_2/DavidFung_Project1.Milestone2.ipynb` top-to-bottom. It generate
 
 **Augmentation strategy (Milestone 3 training)**
 
-All augmentations are chosen to be *detection-safe* — they transform the frame in a way that maps bounding boxes deterministically, so labels remain correct:
-
-| Augmentation | Parameter | Rationale |
-|:------------:|:---------:|-----------|
-| Horizontal flip | `hflip=0.5` | Boxes mirror symmetrically |
-| Mosaic | `mosaic=1.0` | 4-image composite with box rescaling — matches the multi-face task |
-| HSV jitter | `h=0.015, s=0.7, v=0.4` | Mild colour/lighting shift; boxes unaffected |
-| Rotation | `±5°` | Small pose variation; boxes rotate with the frame |
-| Scale | `0.5` | Zoom in/out; boxes rescale proportionally |
-| Mixup | `mixup=0.1` | Low-rate blend avoids blurring box edges |
-| Copy-paste | `copypaste=0.1` | Injects extra faces *with* their boxes, raising recall on small faces |
+All augmentations are chosen to be *detection-safe* — they transform the frame in a way that maps bounding boxes deterministically, so labels remain correct.
 
 Large rotations or aggressive geometric warps are deliberately avoided because they stretch tight face boxes into shapes inconsistent with the YOLO rectangle format.
 

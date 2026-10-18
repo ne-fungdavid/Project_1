@@ -119,11 +119,6 @@ def build_model_fe():
         *_augmentation_layers(),
         Lambda(lambda x: preprocess_input(x)),
         base,
-        # Old Settings
-        #GlobalAveragePooling2D(),
-        #Dense(256, activation='relu', kernel_regularizer=l2_reg),
-        #Dropout(0.50),
-        #Dense(NUM_CLASSES, activation='softmax')
         GlobalAveragePooling2D(),
         Dense(512, activation="relu", kernel_regularizer=l2_reg),
         BatchNormalization(),
@@ -151,11 +146,6 @@ def build_model_ft():
         *_augmentation_layers(),
         Lambda(lambda x: preprocess_input(x)),
         base,
-        # Old Settings
-        #GlobalAveragePooling2D(),
-        #Dense(256, activation='relu', kernel_regularizer=l2_reg),
-        #Dropout(0.50),
-        #Dense(NUM_CLASSES, activation='softmax')
         GlobalAveragePooling2D(),
         Dense(512, activation="relu", kernel_regularizer=l2_reg),
         BatchNormalization(),
