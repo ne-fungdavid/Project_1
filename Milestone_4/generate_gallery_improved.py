@@ -11,7 +11,7 @@ Output in gallery/:
   - validation_improved/ subfolder: annotated validation images + captions
 
 Run from anywhere:
-    python generate_gallery.py
+    python generate_gallery_improved.py
 """
 
 import os
@@ -42,6 +42,8 @@ GALLERY_DIR = os.path.join(SCRIPT_DIR, "gallery")
 CLASSIFIER_PATH = os.path.join(SCRIPT_DIR, "models", "resnet50_classifier_improved.keras")
 DET_CONF = 0.1
 ID_THRESH = 0.5
+YOLO_THRESH = 0.3
+MIN_KEEP_CONF = 0.05
 
 
 def find_yolo_weights():
@@ -158,12 +160,16 @@ def process_split(img_dir, lbl_dir, output_dir, prefix, split_name,
             conf = float(dets.conf[i].item())
             det_list.append({"bbox": [x1, y1, x2, y2], "class_idx": ci,
                              "class_name": yolo_names.get(ci, str(ci)), "conf": conf})
+        # Drop very low-confidence boxes before NMS/classification to avoid false
+        # positives in empty regions when DET_CONF is set low.
+        det_list = [d for d in det_list if d["conf"] >= MIN_KEEP_CONF]
         # Collapse duplicate/overlapping detections of the same face (which YOLO
         # emits with different class labels) using class-agnostic NMS.
         if len(det_list) > 0:
             keep_idx = nms_class_agnostic([d["bbox"] for d in det_list],
                                           [d["conf"] for d in det_list], iou_thresh=0.5)
             det_list = [det_list[i] for i in keep_idx]
+        target_indices = {i for i, n in yolo_names.items() if n in TARGET_IDS}
         gt_matched = [False] * len(gt_boxes)
         annotated = img.copy()
         image_faces = []
@@ -179,25 +185,31 @@ def process_split(img_dir, lbl_dir, output_dir, prefix, split_name,
             if is_tp:
                 gt_matched[best_gt_idx] = True
             x1, y1, x2, y2 = det["bbox"]
-            crop = img[y1:y2, x1:x2]
-            if crop.size > 0:
-                crop_resized = cv2.resize(crop, (224, 224))
-                crop_arr = crop_resized.astype(np.float32)[np.newaxis, ...]
-                probs = classifier.predict(crop_arr, verbose=0)[0]
-                top_idx = int(np.argmax(probs))
-                top_prob = float(probs[top_idx])
-                if top_prob >= ID_THRESH:
-                    pred_label = CLASS_NAMES_13[top_idx]
-                    confidence = top_prob
-                    source = "classifier"
+            # Prefer YOLO's identity when it is confident and in the target set.
+            if det["conf"] >= YOLO_THRESH and det["class_idx"] in target_indices:
+                pred_label = det["class_name"]
+                confidence = det["conf"]
+                source = "yolo"
+            else:
+                crop = img[y1:y2, x1:x2]
+                if crop.size > 0:
+                    crop_resized = cv2.resize(crop, (224, 224))
+                    crop_arr = crop_resized.astype(np.float32)[np.newaxis, ...]
+                    probs = classifier.predict(crop_arr, verbose=0)[0]
+                    top_idx = int(np.argmax(probs))
+                    top_prob = float(probs[top_idx])
+                    if top_prob >= ID_THRESH:
+                        pred_label = CLASS_NAMES_13[top_idx]
+                        confidence = top_prob
+                        source = "classifier"
+                    else:
+                        pred_label = det["class_name"]
+                        confidence = det["conf"]
+                        source = "detector"
                 else:
                     pred_label = det["class_name"]
                     confidence = det["conf"]
                     source = "detector"
-            else:
-                pred_label = det["class_name"]
-                confidence = det["conf"]
-                source = "detector"
             if is_tp and pred_label == gt_label:
                 correct = True; color = (0, 200, 0)
             elif is_tp:

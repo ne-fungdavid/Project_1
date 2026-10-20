@@ -32,6 +32,8 @@ TARGET_IDS = {"7", "797", "2619", "4428", "7007"}
 # unseen images in the live demo). Raise --conf (e.g. 0.25) to be more conservative.
 DEFAULT_DET_CONF = 0.1
 DEFAULT_ID_THRESH = 0.5
+DEFAULT_YOLO_THRESH = 0.3
+DEFAULT_MIN_KEEP_CONF = 0.05
 
 
 def find_yolo_weights():
@@ -51,10 +53,52 @@ def find_yolo_weights():
     return candidates[0] if candidates else None
 
 
+def compute_iou(box_a, box_b):
+    """Intersection-over-union for two [x1, y1, x2, y2] boxes."""
+    x1 = max(box_a[0], box_b[0])
+    y1 = max(box_a[1], box_b[1])
+    x2 = min(box_a[2], box_b[2])
+    y2 = min(box_a[3], box_b[3])
+    inter = max(0, x2 - x1) * max(0, y2 - y1)
+    area_a = max(0, box_a[2] - box_a[0]) * max(0, box_a[3] - box_a[1])
+    area_b = max(0, box_b[2] - box_b[0]) * max(0, box_b[3] - box_b[1])
+    union = area_a + area_b - inter
+    return inter / union if union > 0 else 0.0
+
+
+def nms_detections(detections, iou_thresh=0.5):
+    """Suppress duplicate detections that overlap heavily.
+
+    The detection with the highest final confidence is kept for each cluster of
+    overlapping boxes. This is useful when the detector emits several boxes for
+    the same face.
+    """
+    if not detections:
+        return detections
+
+    order = sorted(range(len(detections)), key=lambda i: detections[i]["confidence"], reverse=True)
+    kept = []
+    suppressed = set()
+
+    for i in order:
+        if i in suppressed:
+            continue
+        kept.append(detections[i])
+        box_i = detections[i]["bbox"]
+        for j in order:
+            if j == i or j in suppressed:
+                continue
+            if compute_iou(box_i, detections[j]["bbox"]) >= iou_thresh:
+                suppressed.add(j)
+
+    return kept
+
+
 class CelebrityPipeline:
     """Integrated detection + identification pipeline."""
 
-    def __init__(self, conf=DEFAULT_DET_CONF, imgsz=640, id_thresh=DEFAULT_ID_THRESH):
+    def __init__(self, conf=DEFAULT_DET_CONF, imgsz=640, id_thresh=DEFAULT_ID_THRESH,
+                 yolo_thresh=DEFAULT_YOLO_THRESH, min_keep_conf=DEFAULT_MIN_KEEP_CONF):
         from ultralytics import YOLO
         from tensorflow.keras.models import load_model
 
@@ -78,6 +122,8 @@ class CelebrityPipeline:
         self.conf = conf
         self.imgsz = imgsz
         self.id_thresh = id_thresh
+        self.yolo_thresh = yolo_thresh
+        self.min_keep_conf = min_keep_conf
         self.target_indices = {
             i for i, n in self.yolo_names.items() if n in TARGET_IDS
         }
@@ -101,6 +147,7 @@ class CelebrityPipeline:
             detections.append({
                 "bbox": [x1, y1, x2, y2],
                 "yolo_class": self.yolo_names.get(cls_idx, str(cls_idx)),
+                "yolo_id": cls_idx,
                 "yolo_conf": b.conf[0].item(),
                 "is_target": cls_idx in self.target_indices,
             })
@@ -112,24 +159,43 @@ class CelebrityPipeline:
         img_area = w * h
         if len(detections) <= 3:
             MIN_RATIO = 0.10 # Min size of bbox
-            TARGET_RATIO = 0.90 # Max size of bbox
+            MAX_RATIO = 0.90 # Max size of bbox
             for det in detections:
                 bx1, by1, bx2, by2 = det["bbox"]
                 bw = max(1, bx2 - bx1)
                 bh = max(1, by2 - by1)
-                if bw * bh > MIN_RATIO * img_area:
-                    scale = ((TARGET_RATIO * img_area) / (bw * bh)) 
-                    cx = (bx1 + bx2) / 2.0
-                    cy = (by1 + by2) / 2.0
+                area = bw * bh
+                target_area = area
+                if area < MIN_RATIO * img_area:
+                    target_area = MIN_RATIO * img_area
+                elif area > MAX_RATIO * img_area:
+                    target_area = MAX_RATIO * img_area
+                if target_area != area:
+                    scale = (target_area / area) ** 0.5
                     nbw = bw * scale
                     nbh = bh * scale
+                    cx = (bx1 + bx2) / 2.0
+                    cy = (by1 + by2) / 2.0
                     bx1 = max(0, int(cx - nbw / 2))
                     by1 = max(0, int(cy - nbh / 2))
                     bx2 = min(w, int(cx + nbw / 2))
                     by2 = min(h, int(cy + nbh / 2))
                     det["bbox"] = [bx1, by1, bx2, by2]
 
+        # Drop very low-confidence detector boxes before classification. This keeps
+        # the pipeline robust when a user runs with a very low --conf value.
+        detections = [det for det in detections if det.get("yolo_conf", 0.0) >= self.min_keep_conf]
+
         for det in detections:
+            # 1) Primary: trust YOLO's class prediction when it is confident and
+            #    the predicted identity is one of the target celebrities.
+            if (det["yolo_conf"] >= self.yolo_thresh and
+                    det["yolo_id"] in self.target_indices):
+                det.update(identity=self.yolo_names[det["yolo_id"]],
+                           confidence=det["yolo_conf"], source="yolo")
+                continue
+
+            # 2) Fallback: run the ResNet50 classifier on the cropped face.
             x1, y1, x2, y2 = det["bbox"]
             crop = img[y1:y2, x1:x2]
             if crop.size == 0:
@@ -148,21 +214,27 @@ class CelebrityPipeline:
                 det.update(identity=det["yolo_class"],
                            confidence=det["yolo_conf"], source="detector")
 
+        detections = nms_detections(detections, iou_thresh=0.5)
         return detections, img
 
     def annotate(self, img, detections):
-        """Draw boxes. Green=classifier (label above box); Orange=detector (label inside, bottom-left).
+        """Draw boxes. Blue=YOLO, Green=classifier (label above box); Orange=detector (label inside, bottom-left).
 
         Mirrors the Milestone 4 notebook's visualize_result().
         """
         annotated = img.copy()
         for det in detections:
             x1, y1, x2, y2 = det["bbox"]
-            color = (0, 200, 0) if det["source"] == "classifier" else (255, 140, 0)
+            if det["source"] == "yolo":
+                color = (255, 0, 0)
+            elif det["source"] == "classifier":
+                color = (0, 200, 0)
+            else:
+                color = (255, 140, 0)
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
             text = f"{det['identity']} ({det['confidence']:.2f})"
-            if det["source"] == "classifier":
-                # Green: label above the box
+            if det["source"] in ("yolo", "classifier"):
+                # Blue / Green: label above the box
                 (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
                 cv2.rectangle(annotated, (x1, max(y1 - th - 6, 0)), (x1 + tw, y1), color, -1)
                 cv2.putText(annotated, text, (x1, max(y1 - 4, 12)),
@@ -186,12 +258,20 @@ def main():
                              f"(default {DEFAULT_ID_THRESH})")
     parser.add_argument("--imgsz", type=int, default=640,
                         help="Inference image size (default 640)")
+    parser.add_argument("--yolo-thresh", type=float, default=DEFAULT_YOLO_THRESH,
+                        help=f"Min YOLO class confidence to accept YOLO's identity "
+                             f"(default {DEFAULT_YOLO_THRESH})")
+    parser.add_argument("--min-keep-conf", type=float, default=DEFAULT_MIN_KEEP_CONF,
+                        help=f"Drop final detections whose original YOLO confidence is below this "
+                             f"(default {DEFAULT_MIN_KEEP_CONF})")
     parser.add_argument("--save", action="store_true",
                         help="Save annotated images to pipeline_output/")
     args = parser.parse_args()
 
     pipeline = CelebrityPipeline(conf=args.conf, imgsz=args.imgsz,
-                                 id_thresh=args.id_thresh)
+                                 id_thresh=args.id_thresh,
+                                 yolo_thresh=args.yolo_thresh,
+                                 min_keep_conf=args.min_keep_conf)
 
     if args.image:
         if not os.path.exists(args.image):
@@ -218,14 +298,15 @@ def main():
     for img_path in images:
         name = os.path.basename(img_path)
         detections, img = pipeline.detect_and_identify(img_path)
+        n_yolo = sum(1 for d in detections if d["source"] == "yolo")
         n_cls = sum(1 for d in detections if d["source"] == "classifier")
         n_det = sum(1 for d in detections if d["source"] == "detector")
 
         print(f"  {name}: {len(detections)} face(s) "
-              f"({n_cls} classified, {n_det} from detector)")
+              f"({n_yolo} yolo, {n_cls} classified, {n_det} detector)")
         for d in sorted(detections, key=lambda x: -x["confidence"]):
             star = " *" if d["is_target"] else ""
-            src = "cls" if d["source"] == "classifier" else "det"
+            src = {"yolo": "yolo", "classifier": "cls", "detector": "det"}.get(d["source"], "det")
             print(f"    {d['identity']:>6s}  conf={d['confidence']:.4f}  [{src}]{star}")
 
         annotated = pipeline.annotate(img, detections)

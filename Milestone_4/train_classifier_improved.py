@@ -9,7 +9,7 @@ Faithfully reproduces the Milestone 1 two-stage ResNet50 training:
 The fine-tuned model is saved as a .keras file for the integrated pipeline.
 
 Run from anywhere:
-    python train_classifier.py
+    python train_classifier_improved.py
 """
 
 import os
